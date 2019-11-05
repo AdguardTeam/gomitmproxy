@@ -2,6 +2,7 @@ package gomitmproxy
 
 import (
 	"bufio"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -71,6 +72,15 @@ func (c *Context) ID() string {
 		return fmt.Sprintf("%d-%d", c.parent.id, c.id)
 	}
 	return fmt.Sprintf("%d", c.id)
+}
+
+// IsMITM returns true if this context is for a MITM'ed connection
+func (c *Context) IsMITM() bool {
+	if _, ok := c.conn.(*tls.Conn); c.parent != nil && ok {
+		return true
+	}
+
+	return false
 }
 
 // ID -- session unique ID

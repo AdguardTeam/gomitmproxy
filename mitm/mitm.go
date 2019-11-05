@@ -154,7 +154,7 @@ func (c *Config) SetValidity(validity time.Duration) {
 // domain certificates on-the-fly using the SNI extension (if specified)
 // or the hostname
 func (c *Config) NewTLSConfigForHost(hostname string) *tls.Config {
-	return &tls.Config{
+	tlsConfig := &tls.Config{
 		GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 			host := clientHello.ServerName
 			if host == "" {
@@ -165,6 +165,13 @@ func (c *Config) NewTLSConfigForHost(hostname string) *tls.Config {
 		},
 		NextProtos: []string{"http/1.1"},
 	}
+
+	// Accept client certs without verifying them
+	// Note that we will still verify remote server certs
+	// nolint:gosec
+	tlsConfig.InsecureSkipVerify = true
+
+	return tlsConfig
 }
 
 func (c *Config) getOrCreateCert(hostname string) (*tls.Certificate, error) {

@@ -32,6 +32,9 @@ func main() {
 	}
 
 	mitmConfig, err := mitm.NewConfig(x509c, priv)
+	if err != nil {
+		panic(err)
+	}
 
 	// PREPARE PROXY
 	addr := &net.TCPAddr{
@@ -40,8 +43,9 @@ func main() {
 	}
 
 	proxy := gomitmproxy.NewProxy(gomitmproxy.Config{
-		ListenAddr: addr,
-		MITMConfig: mitmConfig,
+		ListenAddr:     addr,
+		MITMConfig:     mitmConfig,
+		MITMExceptions: []string{"example.com"},
 	})
 
 	err = proxy.Start()

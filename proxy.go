@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,7 +20,7 @@ const tlsHandshakeTimeout = 10 * time.Second
 
 // Proxy is a structure with the proxy server configuration and current state
 type Proxy struct {
-	roundTripper http.RoundTripper
+	transport http.RoundTripper
 
 	// dial is a function for creating net.Conn
 	// Can be useful to override in unit-tests
@@ -31,6 +32,11 @@ type Proxy struct {
 	conns   sync.WaitGroup // active connections
 	connsMu sync.Mutex     // protects conns.Add/Wait from concurrent access
 
+	// The proxy will not attempt MITM for these hostnames.
+	// A hostname can be added to this list in runtime if proxy fails to verify the certificate.
+	invalidTLSHosts   map[string]bool
+	invalidTLSHostsMu sync.RWMutex
+
 	Config // Proxy configuration
 }
 
@@ -38,7 +44,7 @@ type Proxy struct {
 func NewProxy(config Config) *Proxy {
 	proxy := &Proxy{
 		Config: config,
-		roundTripper: &http.Transport{
+		transport: &http.Transport{
 			// This forces http.Transport to not upgrade requests to HTTP/2
 			// TODO: Remove when HTTP/2 can be supported
 			TLSNextProto:          make(map[string]func(string, *tls.Conn) http.RoundTripper),
@@ -46,13 +52,20 @@ func NewProxy(config Config) *Proxy {
 			TLSHandshakeTimeout:   tlsHandshakeTimeout,
 			ExpectContinueTimeout: time.Second,
 		},
-		timeout: defaultTimeout,
-		closing: make(chan bool),
+		timeout:         defaultTimeout,
+		invalidTLSHosts: map[string]bool{},
+		closing:         make(chan bool),
 	}
 	proxy.dial = (&net.Dialer{
 		Timeout:   dialTimeout,
 		KeepAlive: dialTimeout,
 	}).Dial
+
+	if len(config.MITMExceptions) > 0 {
+		for _, hostname := range config.MITMExceptions {
+			proxy.invalidTLSHosts[hostname] = true
+		}
+	}
 
 	return proxy
 }
@@ -149,11 +162,13 @@ func (p *Proxy) handleConnection(ctx *Context) {
 // handleLoop processes requests in a loop
 func (p *Proxy) handleLoop(ctx *Context) {
 	for {
+		// TODO: Add SetDeadline to *Context
+		// Do it for the topmost parent conn only
 		deadline := time.Now().Add(p.timeout)
 		_ = ctx.conn.SetDeadline(deadline)
 
 		if err := p.handleRequest(ctx); err != nil {
-			log.Debug("id=%s: closing connection due to %v", ctx.ID(), err)
+			log.Debug("id=%s: closing connection due to: %v", ctx.ID(), err)
 			return
 		}
 	}
@@ -168,6 +183,9 @@ func (p *Proxy) handleRequest(ctx *Context) error {
 	defer req.Body.Close()
 
 	session := newSession(ctx, req)
+	if req.URL.Host == "" {
+		req.URL.Host = req.Host
+	}
 	log.Debug("id=%s: handle request to %s", session.ID(), req.URL.String())
 
 	// connection, proxy-connection, etc, etc
@@ -176,9 +194,10 @@ func (p *Proxy) handleRequest(ctx *Context) error {
 	// http by default
 	req.URL.Scheme = "http"
 
-	// check if this is a HTTPS connection inside an HTTP CONNECT tunnel
-	if tconn, ok := ctx.conn.(*tls.Conn); ctx.parent != nil && ok {
-		cs := tconn.ConnectionState()
+	// check if this is an HTTPS connection inside an HTTP CONNECT tunnel
+	if ctx.IsMITM() {
+		tlsConn := ctx.conn.(*tls.Conn)
+		cs := tlsConn.ConnectionState()
 		req.TLS = &cs
 
 		// force HTTPS for secure sessions
@@ -186,19 +205,23 @@ func (p *Proxy) handleRequest(ctx *Context) error {
 	}
 
 	req.RemoteAddr = ctx.conn.RemoteAddr().String()
-	if req.URL.Host == "" {
-		req.URL.Host = req.Host
-	}
 
 	if req.Method == http.MethodConnect {
 		return p.handleConnect(session)
 	}
 
 	// not a CONNECT request, processing HTTP request
-	res, err := p.roundTripper.RoundTrip(req)
+	res, err := p.transport.RoundTrip(req)
 	if err != nil {
 		log.Error("id=%s: failed to round trip: %v", session.ID(), err)
 		res = newErrorResponse(session.req, err)
+
+		if strings.Contains(err.Error(), "x509: ") {
+			log.Printf("id=%s: adding %s to invalid TLS hosts due to: %v", session.ID(), req.Host, err)
+			p.invalidTLSHostsMu.Lock()
+			p.invalidTLSHosts[req.Host] = true
+			p.invalidTLSHostsMu.Unlock()
+		}
 	}
 	defer res.Body.Close()
 
@@ -245,7 +268,7 @@ func (p *Proxy) handleConnect(session *Session) error {
 		return err
 	}
 
-	if p.MITMConfig != nil {
+	if p.canMITM(session.req.URL.Host) {
 		log.Debug("id=%s: attempting MITM for connection", session.ID())
 		session.res = newResponse(http.StatusOK, nil, session.req)
 		err = writeResponse(session)
@@ -273,8 +296,9 @@ func (p *Proxy) handleConnect(session *Session) error {
 		// 22 is the TLS handshake.
 		// https://tools.ietf.org/html/rfc5246#section-6.2.1
 		if b[0] == 22 {
-			tlsConn := tls.Server(pc, p.MITMConfig.NewTLSConfigForHost(session.req.Host))
+			tlsConn := tls.Server(pc, p.MITMConfig.NewTLSConfigForHost(session.req.URL.Host))
 
+			// Handshake with the local client
 			if err := tlsConn.Handshake(); err != nil {
 				log.Error("id=%s: failed to handshake with the client: %v", session.ID(), err)
 				return err
@@ -302,23 +326,13 @@ func (p *Proxy) handleConnect(session *Session) error {
 		return err
 	}
 
-	cbw := bufio.NewWriter(remoteConn)
-	cbr := bufio.NewReader(remoteConn)
-	defer cbw.Flush()
-
-	copySync := func(w io.Writer, r io.Reader, donec chan<- bool) {
-		if _, err := io.Copy(w, r); err != nil && err != io.EOF {
-			log.Error("id=%s: failed to copy CONNECT tunnel: %v", session.ID(), err)
-		}
-
-		log.Debug("id=%s: CONNECT tunnel finished copying", session.ID())
-		donec <- true
-	}
+	remoteW := bufio.NewWriter(remoteConn)
+	remoteR := bufio.NewReader(remoteConn)
+	defer remoteW.Flush()
 
 	donec := make(chan bool, 2)
-
-	go copySync(cbw, session.ctx.localRW, donec)
-	go copySync(session.ctx.localRW, cbr, donec)
+	go copyConnectTunnel(session, remoteW, session.ctx.localRW, donec)
+	go copyConnectTunnel(session, session.ctx.localRW, remoteR, donec)
 
 	log.Debug("id=%s: established CONNECT tunnel, proxying traffic", session.ID())
 	<-donec
@@ -326,6 +340,17 @@ func (p *Proxy) handleConnect(session *Session) error {
 	log.Debug("id=%s: closed CONNECT tunnel", session.ID())
 
 	return errClose
+}
+
+// copyConnectTunnel copies data from reader to writer
+// and then signals about finishing to the "donec" channel
+func copyConnectTunnel(session *Session, w io.Writer, r io.Reader, donec chan<- bool) {
+	if _, err := io.Copy(w, r); err != nil && !isCloseable(err) {
+		log.Error("id=%s: failed to copy CONNECT tunnel: %v", session.ID(), err)
+	}
+
+	log.Debug("id=%s: CONNECT tunnel finished copying", session.ID())
+	donec <- true
 }
 
 // readRequest reads incoming http request in
@@ -337,9 +362,9 @@ func (p *Proxy) readRequest(ctx *Context) (*http.Request, error) {
 	errc := make(chan error, 1)
 
 	// Try reading the HTTP request in a separate goroutine. The idea is to make this process cancelable.
-	// When reading request is finished, it will write the results to one of the channels -- either reqc or errc
+	// When reading request is finished, it will write the results to one of the channels -- either reqc or errc.
 	// At the same time we'll be reading from the "closing" channel.
-	// When proxy is shutting down, the "closing" channel is closed so we'll immediately return
+	// When proxy is shutting down, the "closing" channel is closed so we'll immediately return.
 	go func() {
 		r, err := http.ReadRequest(ctx.localRW.Reader)
 		if err != nil {
@@ -365,4 +390,22 @@ func (p *Proxy) readRequest(ctx *Context) (*http.Request, error) {
 	}
 
 	return req, nil
+}
+
+// canMITM checks if we can perform MITM for this host
+func (p *Proxy) canMITM(hostname string) bool {
+	if p.MITMConfig == nil {
+		return false
+	}
+
+	// Remove the port if it exists.
+	host, _, err := net.SplitHostPort(hostname)
+	if err == nil {
+		hostname = host
+	}
+
+	p.invalidTLSHostsMu.RLock()
+	_, found := p.invalidTLSHosts[hostname]
+	p.invalidTLSHostsMu.RUnlock()
+	return !found
 }

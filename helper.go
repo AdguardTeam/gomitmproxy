@@ -70,6 +70,7 @@ func newResponse(code int, body io.Reader, req *http.Request) *http.Response {
 // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Warning
 func newErrorResponse(req *http.Request, err error) *http.Response {
 	res := newResponse(http.StatusBadGateway, nil, req)
+	res.Close = true
 
 	date := res.Header.Get("Date")
 	if date == "" {
