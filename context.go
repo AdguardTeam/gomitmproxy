@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"sync/atomic"
+	"time"
 )
 
 var (
@@ -81,6 +82,20 @@ func (c *Context) IsMITM() bool {
 	}
 
 	return false
+}
+
+// SetDeadline sets the read and write deadlines associated
+// with the connection. See net.Conn.SetDeadline for more details.
+//
+// The difference is that our contexts can be nested, so we
+// search for the topmost parent context recursively and
+// call SetDeadline for its connection only as this is the
+// real underlying network connection.
+func (c *Context) SetDeadline(t time.Time) error {
+	if c.parent == nil {
+		return c.conn.SetDeadline(t)
+	}
+	return c.parent.SetDeadline(t)
 }
 
 // ID -- session unique ID

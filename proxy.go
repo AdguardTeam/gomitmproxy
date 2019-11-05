@@ -82,7 +82,6 @@ func (p *Proxy) Closing() bool {
 
 // Start starts the proxy server in a separate goroutine
 func (p *Proxy) Start() error {
-	// TODO: What if we want to use a TLS connection here?
 	l, err := net.ListenTCP("tcp", p.ListenAddr)
 	if err != nil {
 		return err
@@ -168,10 +167,8 @@ func (p *Proxy) handleConnection(ctx *Context) {
 // handleLoop processes requests in a loop
 func (p *Proxy) handleLoop(ctx *Context) {
 	for {
-		// TODO: Add SetDeadline to *Context
-		// Do it for the topmost parent conn only
 		deadline := time.Now().Add(p.timeout)
-		_ = ctx.conn.SetDeadline(deadline)
+		_ = ctx.SetDeadline(deadline)
 
 		if err := p.handleRequest(ctx); err != nil {
 			log.Debug("id=%s: closing connection due to: %v", ctx.ID(), err)
