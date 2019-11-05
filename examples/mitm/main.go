@@ -36,6 +36,15 @@ func main() {
 		panic(err)
 	}
 
+	//
+	proxyCert, err := mitmConfig.GetOrCreateCert("127.0.0.1")
+	if err != nil {
+		panic(err)
+	}
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{*proxyCert},
+	}
+
 	// PREPARE PROXY
 	addr := &net.TCPAddr{
 		IP:   net.IPv4(0, 0, 0, 0),
@@ -43,7 +52,9 @@ func main() {
 	}
 
 	proxy := gomitmproxy.NewProxy(gomitmproxy.Config{
-		ListenAddr:     addr,
+		ListenAddr: addr,
+		TLSConfig:  tlsConfig,
+
 		MITMConfig:     mitmConfig,
 		MITMExceptions: []string{"example.com"},
 	})

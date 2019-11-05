@@ -50,12 +50,12 @@ func TestMITM(t *testing.T) {
 	assert.True(t, x509c.NotAfter.After(time.Now().Add(2*time.Hour)))
 
 	// Check that certificate is cached
-	tlsCert2, err := c.getOrCreateCert("example.org")
+	tlsCert2, err := c.GetOrCreateCert("example.org")
 	assert.Nil(t, err)
 	assert.True(t, tlsCert == tlsCert2)
 
 	// Check the certificate for an IP
-	tlsCertForIP, err := c.getOrCreateCert("192.168.0.1:443")
+	tlsCertForIP, err := c.GetOrCreateCert("192.168.0.1:443")
 	assert.Nil(t, err)
 	x509c = tlsCertForIP.Leaf
 	assert.Equal(t, 1, len(x509c.IPAddresses))

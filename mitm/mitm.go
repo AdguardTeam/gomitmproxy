@@ -26,7 +26,7 @@ type Config struct {
 	ca           *x509.Certificate // Root certificate authority
 	caPrivateKey *rsa.PrivateKey   // CA private key
 
-	// roots is a CertPool that contains the root CA getOrCreateCert
+	// roots is a CertPool that contains the root CA GetOrCreateCert
 	// it serves a single purpose -- to verify the cached domain certs
 	roots *x509.CertPool
 
@@ -102,7 +102,7 @@ func NewAuthority(name, organization string, validity time.Duration) (*x509.Cert
 
 // NewConfig creates a new MITM configuration
 // ca -- root certificate authority to use for generating domain certs
-// privateKey -- private key of this CA getOrCreateCert
+// privateKey -- private key of this CA GetOrCreateCert
 func NewConfig(ca *x509.Certificate, privateKey *rsa.PrivateKey) (*Config, error) {
 	roots := x509.NewCertPool()
 	roots.AddCert(ca)
@@ -161,7 +161,7 @@ func (c *Config) NewTLSConfigForHost(hostname string) *tls.Config {
 				host = hostname
 			}
 
-			return c.getOrCreateCert(host)
+			return c.GetOrCreateCert(host)
 		},
 		NextProtos: []string{"http/1.1"},
 	}
@@ -174,7 +174,8 @@ func (c *Config) NewTLSConfigForHost(hostname string) *tls.Config {
 	return tlsConfig
 }
 
-func (c *Config) getOrCreateCert(hostname string) (*tls.Certificate, error) {
+// GetOrCreateCert gets or creates a certificate for the specified hostname
+func (c *Config) GetOrCreateCert(hostname string) (*tls.Certificate, error) {
 	// Remove the port if it exists.
 	host, _, err := net.SplitHostPort(hostname)
 	if err == nil {

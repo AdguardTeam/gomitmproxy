@@ -88,13 +88,19 @@ func (p *Proxy) Start() error {
 		return err
 	}
 
+	var listener net.Listener
+	listener = l
+	if p.TLSConfig != nil {
+		listener = tls.NewListener(l, p.TLSConfig)
+	}
+
 	go func() {
 		log.Printf("start listening to %s", l.Addr())
-		err := p.serve(l)
+		err := p.serve(listener)
 		if err != nil {
 			log.Printf("finished serving due to: %v", err)
 		}
-		_ = l.Close()
+		_ = listener.Close()
 	}()
 
 	return nil
@@ -258,13 +264,7 @@ func (p *Proxy) handleConnect(session *Session) error {
 		log.Error("id=%s: failed to connect to %s: %v", session.ID(), session.req.URL.Host, err)
 		session.res = newErrorResponse(session.req, err)
 
-		if err := session.res.Write(session.ctx.localRW); err != nil {
-			log.Error("id=%s: got error while writing response back to client: %v", session.ID(), err)
-		}
-		err := session.ctx.localRW.Flush()
-		if err != nil {
-			log.Error("id=%s: got error while flushing response back to client: %v", session.ID(), err)
-		}
+		_ = writeResponse(session)
 		return err
 	}
 
@@ -326,13 +326,11 @@ func (p *Proxy) handleConnect(session *Session) error {
 		return err
 	}
 
-	remoteW := bufio.NewWriter(remoteConn)
-	remoteR := bufio.NewReader(remoteConn)
-	defer remoteW.Flush()
-
+	// Note that we don't use buffered reader/writer for local connection
+	// as it causes a noticeable delay when we work as an HTTP over TLS proxy
 	donec := make(chan bool, 2)
-	go copyConnectTunnel(session, remoteW, session.ctx.localRW, donec)
-	go copyConnectTunnel(session, session.ctx.localRW, remoteR, donec)
+	go copyConnectTunnel(session, remoteConn, session.ctx.conn, donec)
+	go copyConnectTunnel(session, session.ctx.conn, remoteConn, donec)
 
 	log.Debug("id=%s: established CONNECT tunnel, proxying traffic", session.ID())
 	<-donec
