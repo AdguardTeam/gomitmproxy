@@ -15,6 +15,11 @@ type Config struct {
 	// If not set, gomitmproxy will work as a simple plain HTTP proxy
 	TLSConfig *tls.Config
 
+	// Username for Proxy-Authorization
+	Username string
+	// Password for Proxy-Authorization
+	Password string
+
 	MITMConfig     *mitm.Config // If not nil, MITM is enabled for the proxy
 	MITMExceptions []string     // A list of hostnames for which MITM will be disabled
 }

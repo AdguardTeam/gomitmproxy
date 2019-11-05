@@ -194,6 +194,17 @@ func (p *Proxy) handleRequest(ctx *Context) error {
 	}
 	log.Debug("id=%s: handle request to %s", session.ID(), req.URL.String())
 
+	// check proxy authorization
+	if p.Username != "" {
+		auth, res := p.authorize(session)
+		if !auth {
+			log.Debug("id=%s: proxy auth required", session.ID())
+			session.res = res
+			_ = writeResponse(session)
+			return errClose
+		}
+	}
+
 	// connection, proxy-connection, etc, etc
 	removeHopByHopHeaders(session.req.Header)
 

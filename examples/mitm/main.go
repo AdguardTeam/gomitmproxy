@@ -55,6 +55,9 @@ func main() {
 		ListenAddr: addr,
 		TLSConfig:  tlsConfig,
 
+		Username: "user",
+		Password: "pass",
+
 		MITMConfig:     mitmConfig,
 		MITMExceptions: []string{"example.com"},
 	})

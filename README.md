@@ -7,7 +7,7 @@ TODO:
 * [X] Basic HTTP proxy without MITM
 * [ ] Proxy
     * [ ] Expose APIs for the library users
-    * [ ] Authentication
+    * [X] Proxy-Authorization
     * [ ] Unit tests
     * [ ] `certsCache` -- persistent storage
     * [X] Support HTTP CONNECT over TLS
