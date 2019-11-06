@@ -25,7 +25,7 @@ func TestMITM(t *testing.T) {
 
 	conf := c.NewTLSConfigForHost("example.org")
 	assert.Equal(t, []string{"http/1.1"}, conf.NextProtos)
-	assert.False(t, conf.InsecureSkipVerify)
+	assert.True(t, conf.InsecureSkipVerify)
 
 	// Test generating a certificate
 	clientHello := &tls.ClientHelloInfo{
