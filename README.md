@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/AdguardTeam/gomitmproxy.svg?branch=master)](https://travis-ci.org/AdguardTeam/gomitmproxy)
+[![Build Status](https://travis-ci.com/AdguardTeam/gomitmproxy.svg?branch=master)](https://travis-ci.com/AdguardTeam/gomitmproxy)
 [![Code Coverage](https://img.shields.io/codecov/c/github/AdguardTeam/gomitmproxy/master.svg)](https://codecov.io/github/AdguardTeam/gomitmproxy?branch=master)
 [![Go Report Card](https://goreportcard.com/badge/github.com/AdguardTeam/gomitmproxy)](https://goreportcard.com/report/AdguardTeam/gomitmproxy)
 [![GolangCI](https://golangci.com/badges/github.com/AdguardTeam/gomitmproxy.svg)](https://golangci.com/r/github.com/AdguardTeam/gomitmproxy)
