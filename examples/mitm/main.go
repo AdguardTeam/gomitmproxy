@@ -5,8 +5,10 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/ameshkov/gomitmproxy/mitm"
@@ -31,7 +33,7 @@ func main() {
 		panic(err)
 	}
 
-	mitmConfig, err := mitm.NewConfig(x509c, priv)
+	mitmConfig, err := mitm.NewConfig(x509c, priv, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -60,6 +62,9 @@ func main() {
 
 		MITMConfig:     mitmConfig,
 		MITMExceptions: []string{"example.com"},
+
+		OnRequest:  onRequest,
+		OnResponse: onResponse,
 	})
 
 	err = proxy.Start()
@@ -72,4 +77,30 @@ func main() {
 	<-signalChannel
 
 	proxy.Close()
+}
+
+func onRequest(session *gomitmproxy.Session) (*http.Request, *http.Response) {
+	req := session.Request()
+
+	log.Printf("onRequest: %s %s", req.Method, req.URL.String())
+
+	if req.URL.Host == "example.net" {
+		body := strings.NewReader("<html><body><h1>Replaced response</h1></body></html>")
+		res := gomitmproxy.NewResponse(http.StatusOK, body, req)
+		res.Header.Set("Content-Type", "text/html")
+		session.SetProp("blocked", true)
+		return nil, res
+	}
+
+	return nil, nil
+}
+
+func onResponse(session *gomitmproxy.Session) *http.Response {
+	log.Printf("onResponse: %s", session.Request().URL.String())
+
+	if _, ok := session.GetProp("blocked"); ok {
+		log.Printf("onResponse: was blocked")
+	}
+
+	return nil
 }

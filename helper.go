@@ -9,8 +9,6 @@ import (
 	"net"
 	"net/http"
 	"time"
-
-	"github.com/AdguardTeam/golibs/log"
 )
 
 var errShutdown = errors.New("proxy is shutting down")
@@ -31,10 +29,10 @@ func isCloseable(err error) bool {
 	return false
 }
 
-// newResponse builds a new HTTP response.
+// NewResponse builds a new HTTP response.
 // If body is nil, an empty byte.Buffer will be provided to be consistent with
 // the guarantees provided by http.Transport and http.Client.
-func newResponse(code int, body io.Reader, req *http.Request) *http.Response {
+func NewResponse(code int, body io.Reader, req *http.Request) *http.Response {
 	if body == nil {
 		body = &bytes.Buffer{}
 	}
@@ -69,7 +67,7 @@ func newResponse(code int, body io.Reader, req *http.Request) *http.Response {
 // "Warning" header is populated with the error details
 // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Warning
 func newErrorResponse(req *http.Request, err error) *http.Response {
-	res := newResponse(http.StatusBadGateway, nil, req)
+	res := NewResponse(http.StatusBadGateway, nil, req)
 	res.Close = true
 
 	date := res.Header.Get("Date")
@@ -80,17 +78,6 @@ func newErrorResponse(req *http.Request, err error) *http.Response {
 	w := fmt.Sprintf(`199 "gomitmproxy" %q %q`, err.Error(), date)
 	res.Header.Add("Warning", w)
 	return res
-}
-
-func writeResponse(session *Session) error {
-	var err error
-	if err = session.res.Write(session.ctx.localRW); err != nil {
-		log.Error("id=%s: got error while writing response back to client: %v", session.ID(), err)
-	}
-	if err = session.ctx.localRW.Flush(); err != nil {
-		log.Error("id=%s: got error while flushing response back to client: %v", session.ID(), err)
-	}
-	return err
 }
 
 // A peekedConn subverts the net.Conn.Read implementation, primarily so that

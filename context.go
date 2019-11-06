@@ -28,6 +28,10 @@ type Context struct {
 
 	conn    net.Conn          // network connection
 	localRW *bufio.ReadWriter // buffered read/writer to this connection
+
+	// props is a map with custom properties that can be used
+	// by gomitmproxy to store context properties
+	props map[string]interface{}
 }
 
 // Session contains all the necessary information about
@@ -38,6 +42,10 @@ type Session struct {
 	ctx *Context       // connection context
 	req *http.Request  // http request
 	res *http.Response // http response
+
+	// props is a map with custom properties that can be used
+	// by gomitmproxy to store session properties
+	props map[string]interface{}
 }
 
 // newContext creates a new Context instance
@@ -54,6 +62,7 @@ func newContext(conn net.Conn, localRW *bufio.ReadWriter, parent *Context) *Cont
 		parent:  parent,
 		conn:    conn,
 		localRW: localRW,
+		props:   map[string]interface{}{},
 	}
 }
 
@@ -61,9 +70,10 @@ func newContext(conn net.Conn, localRW *bufio.ReadWriter, parent *Context) *Cont
 func newSession(ctx *Context, req *http.Request) *Session {
 	sessionID := atomic.AddInt64(&ctx.lastSessionID, 1)
 	return &Session{
-		id:  sessionID,
-		ctx: ctx,
-		req: req,
+		id:    sessionID,
+		ctx:   ctx,
+		req:   req,
+		props: map[string]interface{}{},
 	}
 }
 
@@ -98,7 +108,44 @@ func (c *Context) SetDeadline(t time.Time) error {
 	return c.parent.SetDeadline(t)
 }
 
+// GetProp gets context property (previously saved using SetProp)
+func (c *Context) GetProp(key string) (interface{}, bool) {
+	v, ok := c.props[key]
+	return v, ok
+}
+
+// SetProp sets the context property
+func (c *Context) SetProp(key string, val interface{}) {
+	c.props[key] = val
+}
+
 // ID -- session unique ID
 func (s *Session) ID() string {
 	return fmt.Sprintf("%s-%d", s.ctx.ID(), s.id)
+}
+
+// Request returns the HTTP request of this session
+func (s *Session) Request() *http.Request {
+	return s.req
+}
+
+// Response returns the HTTP response of this session
+func (s *Session) Response() *http.Response {
+	return s.res
+}
+
+// Ctx returns this session's context
+func (s *Session) Ctx() *Context {
+	return s.ctx
+}
+
+// GetProp gets session property (previously saved using SetProp)
+func (s *Session) GetProp(key string) (interface{}, bool) {
+	v, ok := s.props[key]
+	return v, ok
+}
+
+// SetProp sets the session property
+func (s *Session) SetProp(key string, val interface{}) {
+	s.props[key] = val
 }

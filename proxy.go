@@ -11,8 +11,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pkg/errors"
+
 	"github.com/AdguardTeam/golibs/log"
 )
+
+var errClientCertRequested = errors.New("tls: client cert authentication unsupported")
 
 const defaultTimeout = 5 * time.Minute
 const dialTimeout = 30 * time.Second
@@ -20,6 +24,8 @@ const tlsHandshakeTimeout = 10 * time.Second
 
 // Proxy is a structure with the proxy server configuration and current state
 type Proxy struct {
+	// address the proxy listens to
+	addr      net.Addr
 	transport http.RoundTripper
 
 	// dial is a function for creating net.Conn
@@ -51,6 +57,13 @@ func NewProxy(config Config) *Proxy {
 			Proxy:                 http.ProxyFromEnvironment,
 			TLSHandshakeTimeout:   tlsHandshakeTimeout,
 			ExpectContinueTimeout: time.Second,
+			TLSClientConfig: &tls.Config{
+				GetClientCertificate: func(info *tls.CertificateRequestInfo) (certificate *tls.Certificate, e error) {
+					// We purposefully cause an error here so that the http.Transport.RoundTrip method failed
+					// In this case we'll receive the error and will be able to add the host to invalidTLSHosts
+					return nil, errClientCertRequested
+				},
+			},
 		},
 		timeout:         defaultTimeout,
 		invalidTLSHosts: map[string]bool{},
@@ -70,6 +83,11 @@ func NewProxy(config Config) *Proxy {
 	return proxy
 }
 
+// Addr returns the address this proxy listens to
+func (p *Proxy) Addr() net.Addr {
+	return p.addr
+}
+
 // Closing returns true if the proxy is in the closing state
 func (p *Proxy) Closing() bool {
 	select {
@@ -86,6 +104,7 @@ func (p *Proxy) Start() error {
 	if err != nil {
 		return err
 	}
+	p.addr = l.Addr()
 
 	var listener net.Listener
 	listener = l
@@ -179,88 +198,111 @@ func (p *Proxy) handleLoop(ctx *Context) {
 
 // handleRequest reads an incoming request and processes it
 func (p *Proxy) handleRequest(ctx *Context) error {
-	req, err := p.readRequest(ctx)
+	origReq, err := p.readRequest(ctx)
 	if err != nil {
 		return err
 	}
-	defer req.Body.Close()
+	defer origReq.Body.Close()
 
-	session := newSession(ctx, req)
-	if req.URL.Host == "" {
-		req.URL.Host = req.Host
-	}
-	log.Debug("id=%s: handle request to %s", session.ID(), req.URL.String())
+	session := newSession(ctx, origReq)
+	p.prepareRequest(origReq, session)
+	log.Debug("id=%s: handle request %s %s", session.ID(), origReq.Method, origReq.URL.String())
 
-	// check proxy authorization
-	if p.Username != "" {
-		auth, res := p.authorize(session)
-		if !auth {
-			log.Debug("id=%s: proxy auth required", session.ID())
-			session.res = res
-			_ = writeResponse(session)
-			return errClose
+	customRes := false
+	if p.OnRequest != nil {
+		newReq, newRes := p.OnRequest(session)
+		if newReq != nil {
+			log.Debug("id=%s: request was overridden by: %s", session.ID(), newReq.URL.String())
+			session.req = newReq
+		}
+		if newRes != nil {
+			log.Debug("id=%s: response was overridden by: %s", session.ID(), newRes.Status)
+			session.res = newRes
+			customRes = true
 		}
 	}
 
-	// connection, proxy-connection, etc, etc
-	removeHopByHopHeaders(session.req.Header)
+	if !customRes {
+		// check proxy authorization
+		if p.Username != "" {
+			auth, res := p.authorize(session)
+			if !auth {
+				log.Debug("id=%s: proxy auth required", session.ID())
+				session.res = res
+				_ = p.writeResponse(session)
+				return errClose
+			}
+		}
 
-	// http by default
-	req.URL.Scheme = "http"
+		// connection, proxy-connection, etc, etc
+		removeHopByHopHeaders(session.req.Header)
 
-	// check if this is an HTTPS connection inside an HTTP CONNECT tunnel
-	if ctx.IsMITM() {
-		tlsConn := ctx.conn.(*tls.Conn)
-		cs := tlsConn.ConnectionState()
-		req.TLS = &cs
+		if session.req.Method == http.MethodConnect {
+			return p.handleConnect(session)
+		}
 
-		// force HTTPS for secure sessions
-		req.URL.Scheme = "https"
+		// not a CONNECT request, processing HTTP request
+		res, err := p.transport.RoundTrip(session.req)
+
+		if err != nil {
+			log.Error("id=%s: failed to round trip: %v", session.ID(), err)
+			p.raiseOnError(session, err)
+			res = newErrorResponse(session.req, err)
+
+			if strings.Contains(err.Error(), "x509: ") ||
+				strings.Contains(err.Error(), errClientCertRequested.Error()) {
+				log.Printf("id=%s: adding %s to invalid TLS hosts due to: %v", session.ID(), session.req.Host, err)
+				p.invalidTLSHostsMu.Lock()
+				p.invalidTLSHosts[session.req.Host] = true
+				p.invalidTLSHostsMu.Unlock()
+			}
+		}
+		defer res.Body.Close()
+
+		log.Debug("id=%s: received response %s", session.ID(), res.Status)
+		removeHopByHopHeaders(res.Header)
+		session.res = res
 	}
 
-	req.RemoteAddr = ctx.conn.RemoteAddr().String()
-
-	if req.Method == http.MethodConnect {
-		return p.handleConnect(session)
-	}
-
-	// not a CONNECT request, processing HTTP request
-	res, err := p.transport.RoundTrip(req)
+	err = p.writeResponse(session)
 	if err != nil {
-		log.Error("id=%s: failed to round trip: %v", session.ID(), err)
-		res = newErrorResponse(session.req, err)
-
-		if strings.Contains(err.Error(), "x509: ") {
-			log.Printf("id=%s: adding %s to invalid TLS hosts due to: %v", session.ID(), req.Host, err)
-			p.invalidTLSHostsMu.Lock()
-			p.invalidTLSHosts[req.Host] = true
-			p.invalidTLSHostsMu.Unlock()
-		}
+		return err
 	}
-	defer res.Body.Close()
-
-	log.Debug("id=%s: received response %s", session.ID(), res.Status)
-	removeHopByHopHeaders(res.Header)
-	session.res = res
-
-	var closing error
-	if req.Close || res.Close {
-		log.Debug("id=%s: received close request", session.ID())
-		res.Close = true
-		closing = errClose
+	// TODO: Think about refactoring this, looks not good
+	if p.isClosing(session) {
+		return errClose
 	}
-
 	if p.Closing() {
 		log.Debug("id=%s: proxy is shutting down, closing response", session.ID())
-		res.Close = true
-		closing = errClose
+		return errShutdown
+	}
+	return nil
+}
+
+// returns true if this session's response or request signals that
+// the connection must be closed
+func (p *Proxy) isClosing(session *Session) bool {
+	// See http.Response.Write implementation for the details on this
+	//
+	// If we're sending a non-chunked HTTP/1.1 response without a
+	// content-length, the only way to do that is the old HTTP/1.0
+	// way, by noting the EOF with a connection close, so we need
+	// to set Close.
+	if (session.res.ContentLength == 0 || session.res.ContentLength == -1) &&
+		!session.res.Close &&
+		session.res.ProtoAtLeast(1, 1) &&
+		!session.res.Uncompressed &&
+		(len(session.res.TransferEncoding) == 0 || session.res.TransferEncoding[0] != "chunked") {
+		log.Debug("id=%s: received close request (http/1.0 way)", session.ID())
+		return true
 	}
 
-	err = writeResponse(session)
-	if err != nil {
-		return err
+	if session.req.Close || session.res.Close {
+		log.Debug("id=%s: received close request", session.ID())
+		return true
 	}
-	return closing
+
+	return false
 }
 
 // handleConnect processes HTTP CONNECT requests
@@ -270,16 +312,17 @@ func (p *Proxy) handleConnect(session *Session) error {
 	remoteConn, err := p.dial("tcp", session.req.URL.Host)
 	if err != nil {
 		log.Error("id=%s: failed to connect to %s: %v", session.ID(), session.req.URL.Host, err)
+		p.raiseOnError(session, err)
 		session.res = newErrorResponse(session.req, err)
 
-		_ = writeResponse(session)
+		_ = p.writeResponse(session)
 		return err
 	}
 
 	if p.canMITM(session.req.URL.Host) {
 		log.Debug("id=%s: attempting MITM for connection", session.ID())
-		session.res = newResponse(http.StatusOK, nil, session.req)
-		err = writeResponse(session)
+		session.res = NewResponse(http.StatusOK, nil, session.req)
+		err = p.writeResponse(session)
 		if err != nil {
 			return err
 		}
@@ -324,12 +367,12 @@ func (p *Proxy) handleConnect(session *Session) error {
 		return errClose
 	}
 
-	session.res = newResponse(http.StatusOK, nil, session.req)
+	session.res = NewResponse(http.StatusOK, nil, session.req)
 	defer remoteConn.Close()
 	defer session.res.Body.Close()
 
 	session.res.ContentLength = -1
-	err = writeResponse(session)
+	err = p.writeResponse(session)
 	if err != nil {
 		return err
 	}
@@ -396,6 +439,72 @@ func (p *Proxy) readRequest(ctx *Context) (*http.Request, error) {
 	}
 
 	return req, nil
+}
+
+// writeResponse writes the response from session.Res() to the local client
+func (p *Proxy) writeResponse(session *Session) error {
+	if p.OnResponse != nil {
+		res := p.OnResponse(session)
+		if res != nil {
+			log.Debug("id=%s: response was overridden by: %s", session.ID(), res.Status)
+			session.res = res
+		}
+	}
+
+	var err error
+	if err = session.res.Write(session.ctx.localRW); err != nil {
+		log.Error("id=%s: got error while writing response back to client: %v", session.ID(), err)
+	}
+	if err = session.ctx.localRW.Flush(); err != nil {
+		log.Error("id=%s: got error while flushing response back to client: %v", session.ID(), err)
+	}
+	return err
+}
+
+// prepareRequest prepares the HTTP request to be sent to the remote server
+func (p *Proxy) prepareRequest(req *http.Request, session *Session) {
+	if req.URL.Host == "" {
+		req.URL.Host = req.Host
+	}
+	// http by default
+	req.URL.Scheme = "http"
+
+	// check if this is an HTTPS connection inside an HTTP CONNECT tunnel
+	if session.ctx.IsMITM() {
+		tlsConn := session.ctx.conn.(*tls.Conn)
+		cs := tlsConn.ConnectionState()
+		req.TLS = &cs
+
+		// force HTTPS for secure sessions
+		req.URL.Scheme = "https"
+	}
+	req.RemoteAddr = session.ctx.conn.RemoteAddr().String()
+}
+
+// raiseOnRequest calls p.OnRequest
+// if it returns true, we should finish further processing
+func (p *Proxy) raiseOnRequest(session *Session) (bool, error) {
+	if p.OnRequest != nil {
+		newReq, newRes := p.OnRequest(session)
+		if newReq != nil {
+			log.Debug("id=%s: request was overridden by: %s", session.ID(), newReq.URL.String())
+			session.req = newReq
+		}
+		if newRes != nil {
+			log.Debug("id=%s: response was overridden by: %s", session.ID(), newRes.Status)
+			session.res = newRes
+			return true, p.writeResponse(session)
+		}
+	}
+
+	return false, nil
+}
+
+// raiseOnError calls p.OnResponse
+func (p *Proxy) raiseOnError(session *Session, err error) {
+	if p.OnError != nil {
+		p.OnError(session, err)
+	}
 }
 
 // canMITM checks if we can perform MITM for this host

@@ -17,7 +17,7 @@ func TestMITM(t *testing.T) {
 	assert.NotNil(t, ca)
 	assert.NotNil(t, privateKey)
 
-	c, err := NewConfig(ca, privateKey)
+	c, err := NewConfig(ca, privateKey, nil)
 	assert.Nil(t, err)
 
 	c.SetValidity(20 * time.Hour)

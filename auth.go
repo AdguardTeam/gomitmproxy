@@ -18,7 +18,7 @@ func basicAuth(username, password string) string {
 
 // newNotAuthorizedResponse creates a new "407 (Proxy Authentication Required)" response
 func newNotAuthorizedResponse(session *Session) *http.Response {
-	res := newResponse(http.StatusProxyAuthRequired, nil, session.req)
+	res := NewResponse(http.StatusProxyAuthRequired, nil, session.req)
 
 	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Proxy-Authenticate
 	res.Header.Set("Proxy-Authenticate", "Basic")
