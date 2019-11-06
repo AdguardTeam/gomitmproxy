@@ -1,3 +1,4 @@
+// Package gomitmproxy implements a configurable mitm proxy wring purely in go.
 package gomitmproxy
 
 import (
@@ -209,6 +210,8 @@ func (p *Proxy) handleRequest(ctx *Context) error {
 
 	customRes := false
 	if p.OnRequest != nil {
+		// newRes body is closed below (see session.res.body.Close())
+		// nolint:bodyclose
 		newReq, newRes := p.OnRequest(session)
 		if newReq != nil {
 			log.Debug("id=%s: request was overridden by: %s", session.ID(), newReq.URL.String())
@@ -228,6 +231,7 @@ func (p *Proxy) handleRequest(ctx *Context) error {
 			if !auth {
 				log.Debug("id=%s: proxy auth required", session.ID())
 				session.res = res
+				defer res.Body.Close()
 				_ = p.writeResponse(session)
 				return errClose
 			}
@@ -241,11 +245,14 @@ func (p *Proxy) handleRequest(ctx *Context) error {
 		}
 
 		// not a CONNECT request, processing HTTP request
+		// res body is closed below (see session.res.body.Close())
+		// nolint:bodyclose
 		res, err := p.transport.RoundTrip(session.req)
-
 		if err != nil {
 			log.Error("id=%s: failed to round trip: %v", session.ID(), err)
 			p.raiseOnError(session, err)
+			// res body is closed below (see session.res.body.Close())
+			// nolint:bodyclose
 			res = newErrorResponse(session.req, err)
 
 			if strings.Contains(err.Error(), "x509: ") ||
@@ -256,12 +263,14 @@ func (p *Proxy) handleRequest(ctx *Context) error {
 				p.invalidTLSHostsMu.Unlock()
 			}
 		}
-		defer res.Body.Close()
 
 		log.Debug("id=%s: received response %s", session.ID(), res.Status)
 		removeHopByHopHeaders(res.Header)
 		session.res = res
 	}
+
+	// Make sure response body is always closed
+	defer session.res.Body.Close()
 
 	err = p.writeResponse(session)
 	if err != nil {
@@ -312,16 +321,21 @@ func (p *Proxy) handleConnect(session *Session) error {
 	if err != nil {
 		log.Error("id=%s: failed to connect to %s: %v", session.ID(), session.req.URL.Host, err)
 		p.raiseOnError(session, err)
+		// nolint:bodyclose
+		// body is actually closed
 		session.res = newErrorResponse(session.req, err)
-
 		_ = p.writeResponse(session)
+		session.res.Body.Close()
 		return err
 	}
 
 	if p.canMITM(session.req.URL.Host) {
 		log.Debug("id=%s: attempting MITM for connection", session.ID())
+		// nolint:bodyclose
+		// body is actually closed
 		session.res = NewResponse(http.StatusOK, nil, session.req)
 		err = p.writeResponse(session)
+		session.res.Body.Close()
 		if err != nil {
 			return err
 		}
@@ -366,9 +380,11 @@ func (p *Proxy) handleConnect(session *Session) error {
 		return errClose
 	}
 
+	// nolint:bodyclose
+	// body is actually closed
 	session.res = NewResponse(http.StatusOK, nil, session.req)
-	defer remoteConn.Close()
 	defer session.res.Body.Close()
+	defer remoteConn.Close()
 
 	session.res.ContentLength = -1
 	err = p.writeResponse(session)
@@ -445,6 +461,7 @@ func (p *Proxy) writeResponse(session *Session) error {
 	if p.OnResponse != nil {
 		res := p.OnResponse(session)
 		if res != nil {
+			defer res.Body.Close()
 			log.Debug("id=%s: response was overridden by: %s", session.ID(), res.Status)
 			session.res = res
 		}
@@ -478,25 +495,6 @@ func (p *Proxy) prepareRequest(req *http.Request, session *Session) {
 		req.URL.Scheme = "https"
 	}
 	req.RemoteAddr = session.ctx.conn.RemoteAddr().String()
-}
-
-// raiseOnRequest calls p.OnRequest
-// if it returns true, we should finish further processing
-func (p *Proxy) raiseOnRequest(session *Session) (bool, error) {
-	if p.OnRequest != nil {
-		newReq, newRes := p.OnRequest(session)
-		if newReq != nil {
-			log.Debug("id=%s: request was overridden by: %s", session.ID(), newReq.URL.String())
-			session.req = newReq
-		}
-		if newRes != nil {
-			log.Debug("id=%s: response was overridden by: %s", session.ID(), newRes.Status)
-			session.res = newRes
-			return true, p.writeResponse(session)
-		}
-	}
-
-	return false, nil
 }
 
 // raiseOnError calls p.OnResponse

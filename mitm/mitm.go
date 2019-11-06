@@ -1,3 +1,5 @@
+// Package mitm implements methods for working with certificates and TLS configurations
+// that are used for mitming connections.
 package mitm
 
 import (
