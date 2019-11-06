@@ -8,6 +8,7 @@ TODO:
 * [ ] Proxy
     * [X] Expose APIs for the library users
     * [ ] How-to doc
+    * [ ] Travis configuration
     * [X] Proxy-Authorization
     * [ ] Unit tests
     * [X] `certsCache` -- allow custom implementations
