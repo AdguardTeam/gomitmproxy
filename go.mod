@@ -1,4 +1,4 @@
-module github.com/ameshkov/gomitmproxy
+module github.com/AdguardTeam/gomitmproxy
 
 go 1.13
 

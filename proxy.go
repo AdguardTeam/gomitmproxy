@@ -11,9 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pkg/errors"
-
 	"github.com/AdguardTeam/golibs/log"
+	"github.com/pkg/errors"
 )
 
 var errClientCertRequested = errors.New("tls: client cert authentication unsupported")

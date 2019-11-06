@@ -11,11 +11,9 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/ameshkov/gomitmproxy/mitm"
-
 	"github.com/AdguardTeam/golibs/log"
-
-	"github.com/ameshkov/gomitmproxy"
+	"github.com/AdguardTeam/gomitmproxy"
+	"github.com/AdguardTeam/gomitmproxy/mitm"
 )
 
 func main() {
