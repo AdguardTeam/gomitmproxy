@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/AdguardTeam/golibs/log"
 	"github.com/AdguardTeam/gomitmproxy"
@@ -20,23 +21,28 @@ func main() {
 	log.SetLevel(log.DEBUG)
 
 	// READ CERT AND KEY
-	tlsc, err := tls.LoadX509KeyPair("demo.crt", "demo.key")
+	tlsCert, err := tls.LoadX509KeyPair("demo.crt", "demo.key")
 	if err != nil {
 		log.Fatal(err)
 	}
-	priv := tlsc.PrivateKey.(*rsa.PrivateKey)
+	privateKey := tlsCert.PrivateKey.(*rsa.PrivateKey)
 
-	x509c, err := x509.ParseCertificate(tlsc.Certificate[0])
+	x509c, err := x509.ParseCertificate(tlsCert.Certificate[0])
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
-	mitmConfig, err := mitm.NewConfig(x509c, priv, nil)
+	mitmConfig, err := mitm.NewConfig(x509c, privateKey, &CustomCertsStorage{
+		certsCache: map[string]*tls.Certificate{}},
+	)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
-	//
+	mitmConfig.SetValidity(time.Hour * 24 * 7) // generate certs valid for 7 days
+	mitmConfig.SetOrganization("gomitmproxy")  // cert organization
+
+	// GENERATE A CERT FOR HTTP OVER TLS PROXY
 	proxyCert, err := mitmConfig.GetOrCreateCert("127.0.0.1")
 	if err != nil {
 		panic(err)
@@ -67,13 +73,14 @@ func main() {
 
 	err = proxy.Start()
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	signalChannel := make(chan os.Signal, 1)
 	signal.Notify(signalChannel, syscall.SIGINT, syscall.SIGTERM)
 	<-signalChannel
 
+	// CLOSE THE PROXY
 	proxy.Close()
 }
 
@@ -101,4 +108,20 @@ func onResponse(session *gomitmproxy.Session) *http.Response {
 	}
 
 	return nil
+}
+
+// CustomCertsStorage - an example of a custom cert storage
+type CustomCertsStorage struct {
+	certsCache map[string]*tls.Certificate // cache with the generated certificates
+}
+
+// Get gets the certificate from the storage
+func (c *CustomCertsStorage) Get(key string) (*tls.Certificate, bool) {
+	v, ok := c.certsCache[key]
+	return v, ok
+}
+
+// Set saves the certificate to the storage
+func (c *CustomCertsStorage) Set(key string, cert *tls.Certificate) {
+	c.certsCache[key] = cert
 }

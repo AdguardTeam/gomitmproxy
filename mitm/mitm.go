@@ -40,7 +40,8 @@ type Config struct {
 	keyID        []byte        // SKI to use in generated certificates (https://tools.ietf.org/html/rfc3280#section-4.2.1.2)
 	organization string        // Organization (will be used for generated certificates)
 
-	certsStorage CertsStorage // cache with the generated certificates
+	certsStorage   CertsStorage // cache with the generated certificates
+	certsStorageMu sync.RWMutex
 }
 
 // CertsStorage is an interface for generated tls certificates storage
@@ -53,23 +54,18 @@ type CertsStorage interface {
 
 // CertsCache is a simple map-based CertsStorage implementation
 type CertsCache struct {
-	certsCacheMu sync.RWMutex
-	certsCache   map[string]*tls.Certificate // cache with the generated certificates
+	certsCache map[string]*tls.Certificate // cache with the generated certificates
 }
 
 // Get gets the certificate from the storage
 func (c *CertsCache) Get(key string) (*tls.Certificate, bool) {
-	c.certsCacheMu.RLock()
 	v, ok := c.certsCache[key]
-	c.certsCacheMu.RUnlock()
 	return v, ok
 }
 
 // Set saves the certificate to the storage
 func (c *CertsCache) Set(key string, cert *tls.Certificate) {
-	c.certsCacheMu.Lock()
 	c.certsCache[key] = cert
-	c.certsCacheMu.Unlock()
 }
 
 // NewAuthority creates a new CA certificate and associated private key.
@@ -216,7 +212,9 @@ func (c *Config) GetOrCreateCert(hostname string) (*tls.Certificate, error) {
 		hostname = host
 	}
 
+	c.certsStorageMu.RLock()
 	tlsCertificate, ok := c.certsStorage.Get(hostname)
+	c.certsStorageMu.RUnlock()
 
 	if ok {
 		log.Debug("mitm: cache hit for %s", hostname)
@@ -275,6 +273,8 @@ func (c *Config) GetOrCreateCert(hostname string) (*tls.Certificate, error) {
 		Leaf:        x509c,
 	}
 
+	c.certsStorageMu.Lock()
 	c.certsStorage.Set(hostname, tlsCertificate)
+	c.certsStorageMu.Unlock()
 	return tlsCertificate, nil
 }
