@@ -24,6 +24,12 @@ type Config struct {
 	MITMConfig     *mitm.Config // If not nil, MITM is enabled for the proxy
 	MITMExceptions []string     // A list of hostnames for which MITM will be disabled
 
+	// APIHost is a name of the gomitmproxy API
+	// If it is set to "", there will be no API
+	// Here are the methods exposed:
+	// 1. apihost/cert.crt -- serves the authority cert (if MITMConfig is configured)
+	APIHost string
+
 	// OnRequest is called when the request has been just received,
 	// but has not been sent to the remote server.
 	//

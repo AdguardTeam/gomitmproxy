@@ -172,6 +172,14 @@ proxy := gomitmproxy.NewProxy(gomitmproxy.Config{
 })
 ```
 
+If you configure the `APIHost`, you'll be able to download the CA certificate
+from `http://[APIHost]/cert.crt` when the proxy is configured.
+
+```go
+// Navigate to http://gomitmproxy/cert.crt to download the CA certificate
+proxy.APIHost = "gomitmproxy"
+```
+
 ### Custom certs storage
 
 By default, `gomitmproxy` uses an in-memory map-based storage for the certificates,
@@ -218,12 +226,12 @@ mitmConfig, err := mitm.NewConfig(x509c, privateKey, &CustomCertsStorage{
     * [X] How-to doc
     * [X] Travis configuration
     * [X] Proxy-Authorization
-    * [ ] Unit tests
     * [X] WebSockets support (see [this](https://github.com/google/martian/issues/31))
     * [X] `certsCache` -- allow custom implementations
     * [X] Support HTTP CONNECT over TLS
-    * [ ] Test plain HTTP requests inside HTTP CONNECT
-    * [ ] Test memory leaks
+    * [X] Test plain HTTP requests inside HTTP CONNECT
+    * [X] Test memory leaks
+    * [ ] Unit tests
     * [ ] Check & fix TODOs
 * [ ] MITM
     * [X] Basic MITM

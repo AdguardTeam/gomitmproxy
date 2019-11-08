@@ -169,6 +169,11 @@ func NewConfig(ca *x509.Certificate, privateKey *rsa.PrivateKey, storage CertsSt
 	}, nil
 }
 
+// GetCA returns the authority cert
+func (c *Config) GetCA() *x509.Certificate {
+	return c.ca
+}
+
 // SetOrganization sets the organization name that
 // will be used in generated certs
 func (c *Config) SetOrganization(organization string) {

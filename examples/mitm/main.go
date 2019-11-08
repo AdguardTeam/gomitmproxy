@@ -15,10 +15,16 @@ import (
 	"github.com/AdguardTeam/golibs/log"
 	"github.com/AdguardTeam/gomitmproxy"
 	"github.com/AdguardTeam/gomitmproxy/mitm"
+
+	_ "net/http/pprof"
 )
 
 func main() {
 	log.SetLevel(log.DEBUG)
+
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
 
 	// READ CERT AND KEY
 	tlsCert, err := tls.LoadX509KeyPair("demo.crt", "demo.key")
@@ -43,13 +49,13 @@ func main() {
 	mitmConfig.SetOrganization("gomitmproxy")  // cert organization
 
 	// GENERATE A CERT FOR HTTP OVER TLS PROXY
-	proxyCert, err := mitmConfig.GetOrCreateCert("127.0.0.1")
-	if err != nil {
-		panic(err)
-	}
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{*proxyCert},
-	}
+	//proxyCert, err := mitmConfig.GetOrCreateCert("127.0.0.1")
+	//if err != nil {
+	//	panic(err)
+	//}
+	//tlsConfig := &tls.Config{
+	//	Certificates: []tls.Certificate{*proxyCert},
+	//}
 
 	// PREPARE PROXY
 	addr := &net.TCPAddr{
@@ -59,10 +65,11 @@ func main() {
 
 	proxy := gomitmproxy.NewProxy(gomitmproxy.Config{
 		ListenAddr: addr,
-		TLSConfig:  tlsConfig,
+		//		TLSConfig:  tlsConfig,
 
 		Username: "user",
 		Password: "pass",
+		APIHost:  "gomitmproxy",
 
 		MITMConfig:     mitmConfig,
 		MITMExceptions: []string{"example.com"},

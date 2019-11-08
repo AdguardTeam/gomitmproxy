@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/tls"
+	"encoding/pem"
 	"io"
 	"net"
 	"net/http"
@@ -224,6 +225,10 @@ func (p *Proxy) handleRequest(ctx *Context) error {
 		}
 	}
 
+	if session.req.Host == p.APIHost {
+		return p.handleAPIRequest(session)
+	}
+
 	if !customRes {
 		// check proxy authorization
 		if p.Username != "" {
@@ -290,6 +295,33 @@ func (p *Proxy) handleRequest(ctx *Context) error {
 		return errShutdown
 	}
 	return nil
+}
+
+// handleAPIRequest handles a request to gomitmproxy's API
+func (p *Proxy) handleAPIRequest(session *Session) error {
+	if session.req.URL.Path == "/cert.crt" && p.MITMConfig != nil {
+		// serve ca
+		b := pem.EncodeToMemory(&pem.Block{
+			Type:  "CERTIFICATE",
+			Bytes: p.MITMConfig.GetCA().Raw,
+		})
+
+		// nolint:bodyclose
+		// body is actually closed
+		session.res = NewResponse(http.StatusOK, bytes.NewReader(b), session.req)
+		defer session.res.Body.Close()
+		session.res.Close = true
+		session.res.Header.Set("Content-Type", "application/x-x509-ca-cert")
+		session.res.ContentLength = int64(len(b))
+		return p.writeResponse(session)
+	}
+
+	// nolint:bodyclose
+	// body is actually closed
+	session.res = newErrorResponse(session.req, errors.Errorf("wrong API method"))
+	defer session.res.Body.Close()
+	session.res.Close = true
+	return p.writeResponse(session)
 }
 
 // returns true if this session's response or request signals that
@@ -580,9 +612,14 @@ func (p *Proxy) canMITM(hostname string) bool {
 	}
 
 	// Remove the port if it exists.
-	host, _, err := net.SplitHostPort(hostname)
+	host, port, err := net.SplitHostPort(hostname)
 	if err == nil {
 		hostname = host
+	}
+
+	if port != "443" {
+		log.Debug("do not attempt to MITM connections to a port different from 443")
+		return false
 	}
 
 	p.invalidTLSHostsMu.RLock()
