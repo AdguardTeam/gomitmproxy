@@ -219,7 +219,7 @@ mitmConfig, err := mitm.NewConfig(x509c, privateKey, &CustomCertsStorage{
     * [X] Travis configuration
     * [X] Proxy-Authorization
     * [ ] Unit tests
-    * [ ] WebSockets support (see [this](https://github.com/google/martian/issues/31))
+    * [X] WebSockets support (see [this](https://github.com/google/martian/issues/31))
     * [X] `certsCache` -- allow custom implementations
     * [X] Support HTTP CONNECT over TLS
     * [ ] Test plain HTTP requests inside HTTP CONNECT

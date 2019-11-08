@@ -237,6 +237,11 @@ func (p *Proxy) handleRequest(ctx *Context) error {
 			}
 		}
 
+		if session.req.Header.Get("Upgrade") == "websocket" {
+			// connection protocol will be upgraded
+			return p.handleTunnel(session)
+		}
+
 		// connection, proxy-connection, etc, etc
 		removeHopByHopHeaders(session.req.Header)
 
@@ -313,11 +318,75 @@ func (p *Proxy) isClosing(session *Session) bool {
 	return false
 }
 
+// handleTunnel tunnels data to the remote connection
+func (p *Proxy) handleTunnel(session *Session) error {
+	log.Debug("id=%s: handling connection to host: %s", session.ID(), session.req.URL.Host)
+
+	conn, err := p.dial("tcp", session.RemoteAddr())
+	if err != nil {
+		log.Error("id=%s: failed to connect to %s: %v", session.ID(), session.req.URL.Host, err)
+		p.raiseOnError(session, err)
+		// nolint:bodyclose
+		// body is actually closed
+		session.res = newErrorResponse(session.req, err)
+		_ = p.writeResponse(session)
+		session.res.Body.Close()
+		return err
+	}
+
+	remoteConn := conn
+	defer remoteConn.Close()
+
+	// if we're inside a MITMed connection, we should open a TLS connection instead
+	if session.ctx.IsMITM() {
+		tlsConn := tls.Client(conn, &tls.Config{
+			ServerName: session.req.URL.Host,
+			GetClientCertificate: func(info *tls.CertificateRequestInfo) (certificate *tls.Certificate, e error) {
+				// We purposefully cause an error here so that the http.Transport.RoundTrip method failed
+				// In this case we'll receive the error and will be able to add the host to invalidTLSHosts
+				return nil, errClientCertRequested
+			},
+		})
+		// Handshake with the remote server
+		if err := tlsConn.Handshake(); err != nil {
+			// TODO: Consider adding to invalidTLSHosts? -- we should do this if this happens a couple of times in a short period of time
+			log.Error("id=%s: failed to handshake with the server: %v", session.ID(), err)
+			return err
+		}
+
+		// Prepare to process data
+		remoteConn = tlsConn
+	}
+
+	// write the original request to the connection
+	err = session.req.Write(remoteConn)
+	if err != nil {
+		log.Error("id=%s: failed to write request: %v", session.ID(), err)
+		return err
+	}
+
+	// Note that we don't use buffered reader/writer for local connection
+	// as it causes a noticeable delay when we work as an HTTP over TLS proxy
+	donec := make(chan bool, 2)
+	go copyConnectTunnel(session, remoteConn, session.ctx.conn, donec)
+	go copyConnectTunnel(session, session.ctx.conn, remoteConn, donec)
+
+	log.Debug("id=%s: established tunnel, proxying traffic", session.ID())
+	<-donec
+	<-donec
+	log.Debug("id=%s: closed tunnel", session.ID())
+
+	return errClose
+}
+
 // handleConnect processes HTTP CONNECT requests
 func (p *Proxy) handleConnect(session *Session) error {
 	log.Debug("id=%s: connecting to host: %s", session.ID(), session.req.URL.Host)
 
-	remoteConn, err := p.dial("tcp", session.req.URL.Host)
+	remoteConn, err := p.dial("tcp", session.RemoteAddr())
+	if remoteConn != nil {
+		defer remoteConn.Close()
+	}
 	if err != nil {
 		log.Error("id=%s: failed to connect to %s: %v", session.ID(), session.req.URL.Host, err)
 		p.raiseOnError(session, err)
@@ -364,18 +433,19 @@ func (p *Proxy) handleConnect(session *Session) error {
 
 			// Handshake with the local client
 			if err := tlsConn.Handshake(); err != nil {
+				// TODO: Consider adding to invalidTLSHosts? -- we should do this if this happens a couple of times in a short period of time
 				log.Error("id=%s: failed to handshake with the client: %v", session.ID(), err)
 				return err
 			}
 
 			newLocalRW := bufio.NewReadWriter(bufio.NewReader(tlsConn), bufio.NewWriter(tlsConn))
-			newCtx := newContext(tlsConn, newLocalRW, session.ctx)
+			newCtx := newContext(tlsConn, newLocalRW, session)
 			p.handleLoop(newCtx)
 			return errClose
 		}
 
 		newLocalRW := bufio.NewReadWriter(bufio.NewReader(pc), bufio.NewWriter(pc))
-		newCtx := newContext(pc, newLocalRW, session.ctx)
+		newCtx := newContext(pc, newLocalRW, session)
 		p.handleLoop(newCtx)
 		return errClose
 	}
@@ -384,7 +454,6 @@ func (p *Proxy) handleConnect(session *Session) error {
 	// body is actually closed
 	session.res = NewResponse(http.StatusOK, nil, session.req)
 	defer session.res.Body.Close()
-	defer remoteConn.Close()
 
 	session.res.ContentLength = -1
 	err = p.writeResponse(session)
@@ -410,10 +479,10 @@ func (p *Proxy) handleConnect(session *Session) error {
 // and then signals about finishing to the "donec" channel
 func copyConnectTunnel(session *Session, w io.Writer, r io.Reader, donec chan<- bool) {
 	if _, err := io.Copy(w, r); err != nil && !isCloseable(err) {
-		log.Error("id=%s: failed to copy CONNECT tunnel: %v", session.ID(), err)
+		log.Error("id=%s: failed to tunnel: %v", session.ID(), err)
 	}
 
-	log.Debug("id=%s: CONNECT tunnel finished copying", session.ID())
+	log.Debug("id=%s: tunnel finished copying", session.ID())
 	donec <- true
 }
 

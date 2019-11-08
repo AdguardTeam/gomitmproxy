@@ -19,12 +19,11 @@ var (
 // that is currently processing by the proxy
 type Context struct {
 	id            int64 // connection id
-	lastChildID   int64 // last child context ID (auto-incremented value)
 	lastSessionID int64 // last session ID (auto-incremented value)
 
-	// parent context makes sense in the case of handling HTTP CONNECT tunnels
+	// parent session makes sense in the case of handling HTTP CONNECT tunnels
 	// also, it may become useful in the future when HTTP/2 support is added
-	parent *Context
+	parent *Session
 
 	conn    net.Conn          // network connection
 	localRW *bufio.ReadWriter // buffered read/writer to this connection
@@ -37,7 +36,8 @@ type Context struct {
 // Session contains all the necessary information about
 // the request-response pair that is currently being processed
 type Session struct {
-	id int64 // session ID
+	id          int64 // session ID
+	lastChildID int64 // last child context ID (auto-incremented value)
 
 	ctx *Context       // connection context
 	req *http.Request  // http request
@@ -49,7 +49,7 @@ type Session struct {
 }
 
 // newContext creates a new Context instance
-func newContext(conn net.Conn, localRW *bufio.ReadWriter, parent *Context) *Context {
+func newContext(conn net.Conn, localRW *bufio.ReadWriter, parent *Session) *Context {
 	var contextID int64
 	if parent == nil {
 		contextID = atomic.AddInt64(&currentContextID, 1)
@@ -80,7 +80,7 @@ func newSession(ctx *Context, req *http.Request) *Session {
 // ID -- context unique ID
 func (c *Context) ID() string {
 	if c.parent != nil {
-		return fmt.Sprintf("%d-%d", c.parent.id, c.id)
+		return fmt.Sprintf("%s-%d", c.parent.ID(), c.id)
 	}
 	return fmt.Sprintf("%d", c.id)
 }
@@ -105,7 +105,7 @@ func (c *Context) SetDeadline(t time.Time) error {
 	if c.parent == nil {
 		return c.conn.SetDeadline(t)
 	}
-	return c.parent.SetDeadline(t)
+	return c.parent.ctx.SetDeadline(t)
 }
 
 // GetProp gets context property (previously saved using SetProp)
@@ -148,4 +148,22 @@ func (s *Session) GetProp(key string) (interface{}, bool) {
 // SetProp sets the session property
 func (s *Session) SetProp(key string, val interface{}) {
 	s.props[key] = val
+}
+
+// RemoteAddr returns this session's remote address
+func (s *Session) RemoteAddr() string {
+	if s.ctx.IsMITM() {
+		return s.ctx.parent.RemoteAddr()
+	}
+
+	host := s.req.URL.Host
+	if _, _, err := net.SplitHostPort(host); err == nil {
+		return host
+	}
+
+	if s.req.URL.Scheme == "https" {
+		return fmt.Sprintf("%s:443", host)
+	}
+
+	return fmt.Sprintf("%s:80", host)
 }
