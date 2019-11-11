@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/AdguardTeam/gomitmproxy/proxyutil"
+
 	"github.com/AdguardTeam/golibs/log"
 	"github.com/pkg/errors"
 )
@@ -263,7 +265,7 @@ func (p *Proxy) handleRequest(ctx *Context) error {
 			p.raiseOnError(session, err)
 			// res body is closed below (see session.res.body.Close())
 			// nolint:bodyclose
-			res = newErrorResponse(session.req, err)
+			res = proxyutil.NewErrorResponse(session.req, err)
 
 			if strings.Contains(err.Error(), "x509: ") ||
 				strings.Contains(err.Error(), errClientCertRequested.Error()) {
@@ -308,7 +310,7 @@ func (p *Proxy) handleAPIRequest(session *Session) error {
 
 		// nolint:bodyclose
 		// body is actually closed
-		session.res = NewResponse(http.StatusOK, bytes.NewReader(b), session.req)
+		session.res = proxyutil.NewResponse(http.StatusOK, bytes.NewReader(b), session.req)
 		defer session.res.Body.Close()
 		session.res.Close = true
 		session.res.Header.Set("Content-Type", "application/x-x509-ca-cert")
@@ -318,7 +320,7 @@ func (p *Proxy) handleAPIRequest(session *Session) error {
 
 	// nolint:bodyclose
 	// body is actually closed
-	session.res = newErrorResponse(session.req, errors.Errorf("wrong API method"))
+	session.res = proxyutil.NewErrorResponse(session.req, errors.Errorf("wrong API method"))
 	defer session.res.Body.Close()
 	session.res.Close = true
 	return p.writeResponse(session)
@@ -360,7 +362,7 @@ func (p *Proxy) handleTunnel(session *Session) error {
 		p.raiseOnError(session, err)
 		// nolint:bodyclose
 		// body is actually closed
-		session.res = newErrorResponse(session.req, err)
+		session.res = proxyutil.NewErrorResponse(session.req, err)
 		_ = p.writeResponse(session)
 		session.res.Body.Close()
 		return err
@@ -424,7 +426,7 @@ func (p *Proxy) handleConnect(session *Session) error {
 		p.raiseOnError(session, err)
 		// nolint:bodyclose
 		// body is actually closed
-		session.res = newErrorResponse(session.req, err)
+		session.res = proxyutil.NewErrorResponse(session.req, err)
 		_ = p.writeResponse(session)
 		session.res.Body.Close()
 		return err
@@ -434,7 +436,7 @@ func (p *Proxy) handleConnect(session *Session) error {
 		log.Debug("id=%s: attempting MITM for connection", session.ID())
 		// nolint:bodyclose
 		// body is actually closed
-		session.res = NewResponse(http.StatusOK, nil, session.req)
+		session.res = proxyutil.NewResponse(http.StatusOK, nil, session.req)
 		err = p.writeResponse(session)
 		session.res.Body.Close()
 		if err != nil {
@@ -484,7 +486,7 @@ func (p *Proxy) handleConnect(session *Session) error {
 
 	// nolint:bodyclose
 	// body is actually closed
-	session.res = NewResponse(http.StatusOK, nil, session.req)
+	session.res = proxyutil.NewResponse(http.StatusOK, nil, session.req)
 	defer session.res.Body.Close()
 
 	session.res.ContentLength = -1
@@ -562,7 +564,8 @@ func (p *Proxy) writeResponse(session *Session) error {
 	if p.OnResponse != nil {
 		res := p.OnResponse(session)
 		if res != nil {
-			defer res.Body.Close()
+			origBody := res.Body
+			defer origBody.Close()
 			log.Debug("id=%s: response was overridden by: %s", session.ID(), res.Status)
 			session.res = res
 		}
@@ -596,6 +599,11 @@ func (p *Proxy) prepareRequest(req *http.Request, session *Session) {
 		req.URL.Scheme = "https"
 	}
 	req.RemoteAddr = session.ctx.conn.RemoteAddr().String()
+
+	// remove unsupported encodings
+	if req.Header.Get("Accept-Encoding") != "" {
+		req.Header.Set("Accept-Encoding", "gzip")
+	}
 }
 
 // raiseOnError calls p.OnResponse

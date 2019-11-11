@@ -1,14 +1,9 @@
 package gomitmproxy
 
 import (
-	"bytes"
 	"errors"
-	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
-	"net/http"
-	"time"
 )
 
 var errShutdown = errors.New("proxy is shutting down")
@@ -27,57 +22,6 @@ func isCloseable(err error) bool {
 	}
 
 	return false
-}
-
-// NewResponse builds a new HTTP response.
-// If body is nil, an empty byte.Buffer will be provided to be consistent with
-// the guarantees provided by http.Transport and http.Client.
-func NewResponse(code int, body io.Reader, req *http.Request) *http.Response {
-	if body == nil {
-		body = &bytes.Buffer{}
-	}
-
-	rc, ok := body.(io.ReadCloser)
-	if !ok {
-		rc = ioutil.NopCloser(body)
-	}
-
-	res := &http.Response{
-		StatusCode: code,
-		Status:     fmt.Sprintf("%d %s", code, http.StatusText(code)),
-		Proto:      "HTTP/1.1",
-		ProtoMajor: 1,
-		ProtoMinor: 1,
-		Header:     http.Header{},
-		Body:       rc,
-		Request:    req,
-	}
-
-	if req != nil {
-		res.Close = req.Close
-		res.Proto = req.Proto
-		res.ProtoMajor = req.ProtoMajor
-		res.ProtoMinor = req.ProtoMinor
-	}
-
-	return res
-}
-
-// newErrorResponse creates a new HTTP response with status code 502 Bad Gateway
-// "Warning" header is populated with the error details
-// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Warning
-func newErrorResponse(req *http.Request, err error) *http.Response {
-	res := NewResponse(http.StatusBadGateway, nil, req)
-	res.Close = true
-
-	date := res.Header.Get("Date")
-	if date == "" {
-		date = time.Now().Format(http.TimeFormat)
-	}
-
-	w := fmt.Sprintf(`199 "gomitmproxy" %q %q`, err.Error(), date)
-	res.Header.Add("Warning", w)
-	return res
 }
 
 // A peekedConn subverts the net.Conn.Read implementation, primarily so that

@@ -57,7 +57,10 @@ func main() {
 
 ### Modifying requests and responses
 
-You can modify requests and responses by setting `OnRequest` and `OnResponse` handlers.
+You can modify requests and responses using `OnRequest` and `OnResponse` handlers.
+
+The example below will block requests to `example.net` and add a short comment to
+the end of every HTML response.
 
 ```go
 proxy := gomitmproxy.NewProxy(gomitmproxy.Config{
@@ -89,7 +92,39 @@ proxy := gomitmproxy.NewProxy(gomitmproxy.Config{
             log.Printf("onResponse: was blocked")
         }
 
-        return nil
+        res := session.Response()
+        req := session.Request()
+    
+        if strings.Index(res.Header.Get("Content-Type"), "text/html") != 0 {
+            // Do nothing with non-HTML responses
+            return nil
+        }
+    
+        b, err := proxyutil.ReadDecompressedBody(res)
+        // Close the original body
+        _ = res.Body.Close()
+        if err != nil {
+            return proxyutil.NewErrorResponse(req, err)
+        }
+    
+        // Use latin1 before modifying the body
+        // Using this 1-byte encoding will let us preserve all original characters
+        // regardless of what exactly is the encoding
+        body, err := proxyutil.DecodeLatin1(bytes.NewReader(b))
+        if err != nil {
+            return proxyutil.NewErrorResponse(session.Request(), err)
+        }
+    
+        // Modifying the original body
+        modifiedBody, err := proxyutil.EncodeLatin1(body + "<!-- EDITED -->")
+        if err != nil {
+            return proxyutil.NewErrorResponse(session.Request(), err)
+        }
+    
+        res.Body = ioutil.NopCloser(bytes.NewReader(modifiedBody))
+        res.Header.Del("Content-Encoding")
+        res.ContentLength = int64(len(modifiedBody))
+        return res
     },
 })
 ```
@@ -231,6 +266,8 @@ mitmConfig, err := mitm.NewConfig(x509c, privateKey, &CustomCertsStorage{
     * [X] Support HTTP CONNECT over TLS
     * [X] Test plain HTTP requests inside HTTP CONNECT
     * [X] Test memory leaks
+    * [X] Editing response body in a callback
+    * [X] Handle unknown content-encoding values
     * [ ] Unit tests
     * [ ] Check & fix TODOs
 * [ ] MITM

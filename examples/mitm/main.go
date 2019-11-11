@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -11,6 +13,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/AdguardTeam/gomitmproxy/proxyutil"
 
 	"github.com/AdguardTeam/golibs/log"
 	"github.com/AdguardTeam/gomitmproxy"
@@ -49,13 +53,13 @@ func main() {
 	mitmConfig.SetOrganization("gomitmproxy")  // cert organization
 
 	// GENERATE A CERT FOR HTTP OVER TLS PROXY
-	//proxyCert, err := mitmConfig.GetOrCreateCert("127.0.0.1")
-	//if err != nil {
-	//	panic(err)
-	//}
-	//tlsConfig := &tls.Config{
-	//	Certificates: []tls.Certificate{*proxyCert},
-	//}
+	proxyCert, err := mitmConfig.GetOrCreateCert("127.0.0.1")
+	if err != nil {
+		panic(err)
+	}
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{*proxyCert},
+	}
 
 	// PREPARE PROXY
 	addr := &net.TCPAddr{
@@ -65,7 +69,7 @@ func main() {
 
 	proxy := gomitmproxy.NewProxy(gomitmproxy.Config{
 		ListenAddr: addr,
-		//		TLSConfig:  tlsConfig,
+		TLSConfig:  tlsConfig,
 
 		Username: "user",
 		Password: "pass",
@@ -98,7 +102,7 @@ func onRequest(session *gomitmproxy.Session) (*http.Request, *http.Response) {
 
 	if req.URL.Host == "example.net" {
 		body := strings.NewReader("<html><body><h1>Replaced response</h1></body></html>")
-		res := gomitmproxy.NewResponse(http.StatusOK, body, req)
+		res := proxyutil.NewResponse(http.StatusOK, body, req)
 		res.Header.Set("Content-Type", "text/html")
 		session.SetProp("blocked", true)
 		return nil, res
@@ -112,9 +116,42 @@ func onResponse(session *gomitmproxy.Session) *http.Response {
 
 	if _, ok := session.GetProp("blocked"); ok {
 		log.Printf("onResponse: was blocked")
+		return nil
 	}
 
-	return nil
+	res := session.Response()
+	req := session.Request()
+
+	if strings.Index(res.Header.Get("Content-Type"), "text/html") != 0 {
+		// Do nothing with non-HTML responses
+		return nil
+	}
+
+	b, err := proxyutil.ReadDecompressedBody(res)
+	// Close the original body
+	_ = res.Body.Close()
+	if err != nil {
+		return proxyutil.NewErrorResponse(req, err)
+	}
+
+	// Use latin1 before modifying the body
+	// Using this 1-byte encoding will let us preserve all original characters
+	// regardless of what exactly is the encoding
+	body, err := proxyutil.DecodeLatin1(bytes.NewReader(b))
+	if err != nil {
+		return proxyutil.NewErrorResponse(session.Request(), err)
+	}
+
+	// Modifying the original body
+	modifiedBody, err := proxyutil.EncodeLatin1(body + "<!-- EDITED -->")
+	if err != nil {
+		return proxyutil.NewErrorResponse(session.Request(), err)
+	}
+
+	res.Body = ioutil.NopCloser(bytes.NewReader(modifiedBody))
+	res.Header.Del("Content-Encoding")
+	res.ContentLength = int64(len(modifiedBody))
+	return res
 }
 
 // CustomCertsStorage - an example of a custom cert storage

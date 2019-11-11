@@ -4,6 +4,8 @@ import (
 	"encoding/base64"
 	"net/http"
 	"strings"
+
+	"github.com/AdguardTeam/gomitmproxy/proxyutil"
 )
 
 // See 2 (end of page 4) https://www.ietf.org/rfc/rfc2617.txt
@@ -18,7 +20,7 @@ func basicAuth(username, password string) string {
 
 // newNotAuthorizedResponse creates a new "407 (Proxy Authentication Required)" response
 func newNotAuthorizedResponse(session *Session) *http.Response {
-	res := NewResponse(http.StatusProxyAuthRequired, nil, session.req)
+	res := proxyutil.NewResponse(http.StatusProxyAuthRequired, nil, session.req)
 
 	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Proxy-Authenticate
 	res.Header.Set("Proxy-Authenticate", "Basic")
