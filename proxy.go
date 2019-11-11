@@ -356,7 +356,7 @@ func (p *Proxy) isClosing(session *Session) bool {
 func (p *Proxy) handleTunnel(session *Session) error {
 	log.Debug("id=%s: handling connection to host: %s", session.ID(), session.req.URL.Host)
 
-	conn, err := p.dial("tcp", session.RemoteAddr())
+	conn, err := p.connect(session, "tcp", session.RemoteAddr())
 	if err != nil {
 		log.Error("id=%s: failed to connect to %s: %v", session.ID(), session.req.URL.Host, err)
 		p.raiseOnError(session, err)
@@ -417,7 +417,7 @@ func (p *Proxy) handleTunnel(session *Session) error {
 func (p *Proxy) handleConnect(session *Session) error {
 	log.Debug("id=%s: connecting to host: %s", session.ID(), session.req.URL.Host)
 
-	remoteConn, err := p.dial("tcp", session.RemoteAddr())
+	remoteConn, err := p.connect(session, "tcp", session.RemoteAddr())
 	if remoteConn != nil {
 		defer remoteConn.Close()
 	}
@@ -579,6 +579,33 @@ func (p *Proxy) writeResponse(session *Session) error {
 		log.Error("id=%s: got error while flushing response back to client: %v", session.ID(), err)
 	}
 	return err
+}
+
+// connect opens a network connection to the specified remote address
+// this method can be called in two cases:
+// 1. When the proxy handles the HTTP CONNECT.
+//    IMPORTANT: In this case we don't actually use the remote connections.
+//    It is only used to check if the remote endpoint is available
+// 2. When the proxy bypasses data from the client to the remote endpoint.
+//    For instance, it could happen when there's a WebSocket connection.
+func (p *Proxy) connect(session *Session, proto string, addr string) (net.Conn, error) {
+	log.Debug("id=%s: connecting to %s://%s", session.ID(), proto, addr)
+
+	if p.OnConnect != nil {
+		conn := p.OnConnect(session, proto, addr)
+		if conn != nil {
+			log.Debug("id=%s: connection was overridden", session.ID())
+			return conn, nil
+		}
+	}
+
+	host, _, err := net.SplitHostPort(addr)
+	if err == nil && host == p.APIHost {
+		log.Debug("id=%s: connecting to the API host, return dummy connection", session.ID())
+		return &proxyutil.NoopConn{}, nil
+	}
+
+	return p.dial(proto, addr)
 }
 
 // prepareRequest prepares the HTTP request to be sent to the remote server

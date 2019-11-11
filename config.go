@@ -30,6 +30,9 @@ type Config struct {
 	// 1. apihost/cert.crt -- serves the authority cert (if MITMConfig is configured)
 	APIHost string
 
+	//
+	OnConnect func(session *Session, proto string, addr string) net.Conn
+
 	// OnRequest is called when the request has been just received,
 	// but has not been sent to the remote server.
 	//

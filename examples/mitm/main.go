@@ -80,6 +80,7 @@ func main() {
 
 		OnRequest:  onRequest,
 		OnResponse: onResponse,
+		OnConnect:  onConnect,
 	})
 
 	err = proxy.Start()
@@ -105,6 +106,13 @@ func onRequest(session *gomitmproxy.Session) (*http.Request, *http.Response) {
 		res := proxyutil.NewResponse(http.StatusOK, body, req)
 		res.Header.Set("Content-Type", "text/html")
 		session.SetProp("blocked", true)
+		return nil, res
+	}
+
+	if req.URL.Host == "testgomitmproxy" {
+		body := strings.NewReader("<html><body><h1>Served by gomitmproxy</h1></body></html>")
+		res := proxyutil.NewResponse(http.StatusOK, body, req)
+		res.Header.Set("Content-Type", "text/html")
 		return nil, res
 	}
 
@@ -152,6 +160,17 @@ func onResponse(session *gomitmproxy.Session) *http.Response {
 	res.Header.Del("Content-Encoding")
 	res.ContentLength = int64(len(modifiedBody))
 	return res
+}
+
+func onConnect(session *gomitmproxy.Session, proto string, addr string) net.Conn {
+	host, _, err := net.SplitHostPort(addr)
+
+	if err == nil && host == "testgomitmproxy" {
+		// Don't let it connecting there -- we'll serve it by ourselves
+		return &proxyutil.NoopConn{}
+	}
+
+	return nil
 }
 
 // CustomCertsStorage - an example of a custom cert storage

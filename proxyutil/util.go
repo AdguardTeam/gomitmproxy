@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"time"
 
@@ -97,3 +98,30 @@ func DecodeLatin1(reader io.Reader) (string, error) {
 func EncodeLatin1(str string) ([]byte, error) {
 	return charmap.ISO8859_1.NewEncoder().Bytes([]byte(str))
 }
+
+// NoopConn is a struct that implements net.Conn and does nothing
+type NoopConn struct{}
+
+// LocalAddr - always returns 0.0.0.0:0
+func (NoopConn) LocalAddr() net.Addr { return &net.TCPAddr{} }
+
+// RemoteAddr - always returns 0.0.0.0:0
+func (NoopConn) RemoteAddr() net.Addr { return &net.TCPAddr{} }
+
+// SetDeadline - does nothing, returns nil
+func (NoopConn) SetDeadline(t time.Time) error { return nil }
+
+// SetReadDeadline - does nothing, returns nil
+func (NoopConn) SetReadDeadline(t time.Time) error { return nil }
+
+// SetWriteDeadline - does nothing, returns nil
+func (NoopConn) SetWriteDeadline(t time.Time) error { return nil }
+
+// Read -- does nothing, returns io.EOF
+func (NoopConn) Read(b []byte) (int, error) { return 0, io.EOF }
+
+// Write -- does nothing, returns len(b)
+func (NoopConn) Write(b []byte) (int, error) { return len(b), nil }
+
+// Close -- does nothing, returns nil
+func (NoopConn) Close() error { return nil }
