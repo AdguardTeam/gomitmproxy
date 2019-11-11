@@ -268,6 +268,8 @@ mitmConfig, err := mitm.NewConfig(x509c, privateKey, &CustomCertsStorage{
     * [X] Test memory leaks
     * [X] Editing response body in a callback
     * [X] Handle unknown content-encoding values
+    * [ ] Handle CONNECT to APIHost properly (without trying to actually connect anywhere)
+    * [ ] Allow hijacking connections (!)
     * [ ] Unit tests
     * [ ] Check & fix TODOs
 * [ ] MITM
