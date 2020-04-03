@@ -115,16 +115,19 @@ func (p *Proxy) Start() error {
 		listener = tls.NewListener(l, p.TLSConfig)
 	}
 
-	go func() {
-		log.Printf("start listening to %s", l.Addr())
-		err := p.serve(listener)
-		if err != nil {
-			log.Printf("finished serving due to: %v", err)
-		}
-		_ = listener.Close()
-	}()
-
+	go p.Serve(listener)
 	return nil
+}
+
+// Serve starts reading and processing requests from the specified listener.
+// Please note, that it will close the listener in the end.
+func (p *Proxy) Serve(l net.Listener) {
+	log.Printf("start listening to %s", l.Addr())
+	err := p.serve(l)
+	if err != nil {
+		log.Printf("finished serving due to: %v", err)
+	}
+	_ = l.Close()
 }
 
 // Close sets the proxy to the closing state so it stops receiving new connections,

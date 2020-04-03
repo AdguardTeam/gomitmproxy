@@ -270,8 +270,11 @@ mitmConfig, err := mitm.NewConfig(x509c, privateKey, &CustomCertsStorage{
     * [X] Handle unknown content-encoding values
     * [X] Handle CONNECT to APIHost properly (without trying to actually connect anywhere)
     * [X] Allow hijacking connections (!)
+    * [X] Multiple listeners
     * [ ] Unit tests
     * [ ] Check & fix TODOs
+    * [ ] Allow specifying net.Dialer
+    * [ ] Specify timeouts for http.Transport
 * [ ] MITM
     * [X] Basic MITM
     * [X] MITM exceptions

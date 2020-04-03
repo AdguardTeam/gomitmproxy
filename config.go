@@ -30,7 +30,14 @@ type Config struct {
 	// 1. apihost/cert.crt -- serves the authority cert (if MITMConfig is configured)
 	APIHost string
 
+	// OnConnect is called when the proxy tries to open a net.Conn.
+	// It allows you to hijack the remote connection and replace it with your own.
 	//
+	// 1. When the proxy handles the HTTP CONNECT.
+	//    IMPORTANT: In this case we don't actually use the remote connections.
+	//    It is only used to check if the remote endpoint is available
+	// 2. When the proxy bypasses data from the client to the remote endpoint.
+	//    For instance, it could happen when there's a WebSocket connection.
 	OnConnect func(session *Session, proto string, addr string) net.Conn
 
 	// OnRequest is called when the request has been just received,
