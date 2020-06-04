@@ -30,6 +30,7 @@ type Proxy struct {
 	// address the proxy listens to
 	addr      net.Addr
 	transport http.RoundTripper
+	listener  net.Listener
 
 	// dial is a function for creating net.Conn
 	// Can be useful to override in unit-tests
@@ -115,6 +116,7 @@ func (p *Proxy) Start() error {
 		listener = tls.NewListener(l, p.TLSConfig)
 	}
 
+	p.listener = listener
 	go p.Serve(listener)
 	return nil
 }
@@ -136,6 +138,7 @@ func (p *Proxy) Serve(l net.Listener) {
 func (p *Proxy) Close() {
 	log.Printf("Closing proxy")
 
+	p.listener.Close()
 	// This will prevent waiting for the proxy.timeout until an incoming request is read
 	close(p.closing)
 
