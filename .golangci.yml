@@ -61,3 +61,5 @@ issues:
     # gosec: we need this in mitm.go (SHA1 warnings)
     - G505
     - G401
+    # gosec: we may need low TLS versions
+    - G402
