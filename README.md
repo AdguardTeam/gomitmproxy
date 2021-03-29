@@ -74,7 +74,7 @@ proxy := gomitmproxy.NewProxy(gomitmproxy.Config{
 
         if req.URL.Host == "example.net" {
             body := strings.NewReader("<html><body><h1>Replaced response</h1></body></html>")
-            res := gomitmproxy.NewResponse(http.StatusOK, body, req)
+            res := proxyutil.NewResponse(http.StatusOK, body, req)
             res.Header.Set("Content-Type", "text/html")
 
             // Use session props to pass the information about request being blocked
