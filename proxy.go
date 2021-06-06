@@ -67,6 +67,8 @@ func NewProxy(config Config) *Proxy {
 					// In this case we'll receive the error and will be able to add the host to invalidTLSHosts
 					return nil, errClientCertRequested
 				},
+				MinVersion:   config.MITMConfig.TlsMinVersion,
+				CipherSuites: config.MITMConfig.TlsAcceptCipherSuites,
 			},
 		},
 		timeout:         defaultTimeout,

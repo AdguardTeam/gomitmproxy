@@ -42,6 +42,11 @@ type Config struct {
 
 	certsStorage   CertsStorage // cache with the generated certificates
 	certsStorageMu sync.RWMutex
+
+	// Set a custom suite of ciphers to accept from remote servers. Nil to use the go default.
+	TlsAcceptCipherSuites []uint16
+	// Set a custom minimum TLS version to accept from remote servers. 0 to use the go default.
+	TlsMinVersion uint16
 }
 
 // CertsStorage is an interface for generated tls certificates storage
