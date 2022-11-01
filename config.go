@@ -38,7 +38,7 @@ type Config struct {
 	//    It is only used to check if the remote endpoint is available
 	// 2. When the proxy bypasses data from the client to the remote endpoint.
 	//    For instance, it could happen when there's a WebSocket connection.
-	OnConnect func(session *Session, proto string, addr string) net.Conn
+	OnConnect func(session *Session, proto string, addr string) (net.Conn, error)
 
 	// OnRequest is called when the request has been just received,
 	// but has not been sent to the remote server.
@@ -64,4 +64,7 @@ type Config struct {
 	// OnError is called if there's an issue with retrieving
 	// the response from the remote server.
 	OnError func(session *Session, err error)
+
+	// OnUnknownStream is called when we met unmitmable stream
+	OnUnknownStream func(session *Session, origin net.Conn) error
 }

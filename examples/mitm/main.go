@@ -162,15 +162,15 @@ func onResponse(session *gomitmproxy.Session) *http.Response {
 	return res
 }
 
-func onConnect(session *gomitmproxy.Session, proto string, addr string) net.Conn {
+func onConnect(session *gomitmproxy.Session, proto string, addr string) (net.Conn, error) {
 	host, _, err := net.SplitHostPort(addr)
 
 	if err == nil && host == "testgomitmproxy" {
 		// Don't let it connecting there -- we'll serve it by ourselves
-		return &proxyutil.NoopConn{}
+		return &proxyutil.NoopConn{}, nil
 	}
 
-	return nil
+	return nil, nil
 }
 
 // CustomCertsStorage - an example of a custom cert storage

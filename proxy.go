@@ -421,29 +421,12 @@ func (p *Proxy) handleTunnel(session *Session) error {
 
 // handleConnect processes HTTP CONNECT requests
 func (p *Proxy) handleConnect(session *Session) error {
-	log.Debug("id=%s: connecting to host: %s", session.ID(), session.req.URL.Host)
-
-	remoteConn, err := p.connect(session, "tcp", session.RemoteAddr())
-	if remoteConn != nil {
-		defer remoteConn.Close()
-	}
-	if err != nil {
-		log.Error("id=%s: failed to connect to %s: %v", session.ID(), session.req.URL.Host, err)
-		p.raiseOnError(session, err)
-		// nolint:bodyclose
-		// body is actually closed
-		session.res = proxyutil.NewErrorResponse(session.req, err)
-		_ = p.writeResponse(session)
-		session.res.Body.Close()
-		return err
-	}
-
 	if p.canMITM(session.req.URL.Host) {
 		log.Debug("id=%s: attempting MITM for connection", session.ID())
 		// nolint:bodyclose
 		// body is actually closed
 		session.res = proxyutil.NewResponse(http.StatusOK, nil, session.req)
-		err = p.writeResponse(session)
+		err := p.writeResponse(session)
 		session.res.Body.Close()
 		if err != nil {
 			return err
@@ -496,8 +479,36 @@ func (p *Proxy) handleConnect(session *Session) error {
 	defer session.res.Body.Close()
 
 	session.res.ContentLength = -1
-	err = p.writeResponse(session)
+	err := p.writeResponse(session)
 	if err != nil {
+		return err
+	}
+
+	// use the OnUnknownStream func first if it exists
+	if p.OnUnknownStream != nil {
+		log.Debug("id=%s: enable unknown stream processor")
+		err := p.OnUnknownStream(session, session.ctx.conn)
+		if err != nil {
+			log.Error("id=%s: unknown stream processor process failed, host:%s, err:%b", session.ID(), session.req.URL.Host, err)
+			p.raiseOnError(session, err)
+			return err
+		}
+		return errClose
+	}
+
+	log.Debug("id=%s: connecting to host: %s", session.ID(), session.req.URL.Host)
+	remoteConn, err := p.connect(session, "tcp", session.RemoteAddr())
+	if remoteConn != nil {
+		defer remoteConn.Close()
+	}
+	if err != nil {
+		log.Error("id=%s: failed to connect to %s: %v", session.ID(), session.req.URL.Host, err)
+		p.raiseOnError(session, err)
+		// nolint:bodyclose
+		// body is actually closed
+		session.res = proxyutil.NewErrorResponse(session.req, err)
+		_ = p.writeResponse(session)
+		session.res.Body.Close()
 		return err
 	}
 
@@ -598,7 +609,11 @@ func (p *Proxy) connect(session *Session, proto string, addr string) (net.Conn, 
 	log.Debug("id=%s: connecting to %s://%s", session.ID(), proto, addr)
 
 	if p.OnConnect != nil {
-		conn := p.OnConnect(session, proto, addr)
+		conn, err := p.OnConnect(session, proto, addr)
+		if err != nil {
+			log.Debug("id=%s: open connection fail, proto:%s, addr:%s, err:%v", session.ID(), proto, addr, err)
+			return conn, err
+		}
 		if conn != nil {
 			log.Debug("id=%s: connection was overridden", session.ID())
 			return conn, nil
