@@ -489,7 +489,7 @@ func (p *Proxy) handleConnect(session *Session) error {
 		log.Debug("id=%s: enable unknown stream processor")
 		err := p.OnUnknownStream(session, session.ctx.conn)
 		if err != nil {
-			log.Error("id=%s: unknown stream processor process failed, host:%s, err:%b", session.ID(), session.req.URL.Host, err)
+			log.Error("id=%s: unknown stream processor process failed, host:%s, err:%v", session.ID(), session.req.URL.Host, err)
 			p.raiseOnError(session, err)
 			return err
 		}
