@@ -51,7 +51,7 @@ type Proxy struct {
 }
 
 // NewProxy creates a new instance of the Proxy
-func NewProxy(config Config) *Proxy {
+func NewProxy(config Config, opts ...Option) *Proxy {
 	proxy := &Proxy{
 		Config: config,
 		transport: &http.Transport{
@@ -82,6 +82,10 @@ func NewProxy(config Config) *Proxy {
 		for _, hostname := range config.MITMExceptions {
 			proxy.invalidTLSHosts[hostname] = true
 		}
+	}
+
+	for _, opt := range opts {
+		opt(proxy)
 	}
 
 	return proxy
@@ -195,8 +199,11 @@ func (p *Proxy) handleConnection(ctx *Context) {
 // handleLoop processes requests in a loop
 func (p *Proxy) handleLoop(ctx *Context) {
 	for {
-		deadline := time.Now().Add(p.timeout)
-		_ = ctx.SetDeadline(deadline)
+		if p.timeout != 0 {
+			deadline := time.Now().Add(p.timeout)
+
+			_ = ctx.SetDeadline(deadline)
+		}
 
 		if err := p.handleRequest(ctx); err != nil {
 			log.Debug("id=%s: closing connection due to: %v", ctx.ID(), err)

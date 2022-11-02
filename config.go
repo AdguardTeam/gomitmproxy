@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/AdguardTeam/gomitmproxy/mitm"
 )
@@ -67,4 +68,12 @@ type Config struct {
 
 	// OnUnknownStream is called when we met unmitmable stream
 	OnUnknownStream func(session *Session, origin net.Conn) error
+}
+
+type Option func(p *Proxy)
+
+func WithTimeout(t time.Duration) Option {
+	return func(p *Proxy) {
+		p.timeout = t
+	}
 }
