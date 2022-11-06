@@ -1,7 +1,7 @@
-name: golangci-lint
+name: Build
 
 'env':
-  'GO_VERSION': '1.18'
+  'GO_VERSION': '1.19'
 
 'on':
   'push':
@@ -12,36 +12,34 @@ name: golangci-lint
   'pull_request':
 
 jobs:
-  golangci:
-    runs-on:
-      ${{ matrix.os }}
+  tests:
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os:
-          - ubuntu-latest
+          - windows-latest
           - macos-latest
+          - ubuntu-latest
     steps:
-      - name: setup-go
+      - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
         with:
           go-version: '${{ env.GO_VERSION }}'
-
-      - uses: actions/checkout@v3
-
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v3
+      - name: Run tests
+        env:
+          CI: "1"
+        run: |-
+          go test -race -v -bench="." -coverprofile="coverage.txt" -covermode=atomic ./...
+      - name: Upload coverage
+        uses: codecov/codecov-action@v1
+        if: "success() && matrix.os == 'ubuntu-latest'"
         with:
-          # This field is required.  Dont set the patch version to always use
-          # the latest patch version.
-          version: v1.50.0
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: ./coverage.txt
+
   notify:
     needs:
-      - golangci
-    # Secrets are not passed to workflows that are triggered by a pull request
-    # from a fork.
-    #
-    # Use always() to signal to the runner that this job must run even if the
-    # previous ones failed.
+      - build
     if:
       ${{ always() &&
       (
@@ -57,7 +55,8 @@ jobs:
         uses: 8398a7/action-slack@v3
         with:
           status: ${{ env.WORKFLOW_CONCLUSION }}
-          fields: workflow, repo, message, commit, author, eventName, ref
+          fields: workflow, repo, message, commit, author, eventName,ref
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
