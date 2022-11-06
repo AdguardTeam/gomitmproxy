@@ -39,7 +39,7 @@ jobs:
 
   notify:
     needs:
-      - build
+      - tests
     if:
       ${{ always() &&
       (
