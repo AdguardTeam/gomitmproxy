@@ -685,6 +685,13 @@ func (p *Proxy) canMITM(hostname string) bool {
 		return false
 	}
 
+	if p.Config.OnCheckMITM != nil {
+		//user layer tell that can mitm, we should still check `invalidTLSHosts``
+		if !p.Config.OnCheckMITM(hostname) {
+			return false
+		}
+	}
+
 	p.invalidTLSHostsMu.RLock()
 	_, found := p.invalidTLSHosts[hostname]
 	p.invalidTLSHostsMu.RUnlock()

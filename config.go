@@ -68,6 +68,8 @@ type Config struct {
 
 	// OnUnknownStream is called when we met unmitmable stream
 	OnUnknownStream func(session *Session, origin net.Conn) error
+
+	OnCheckMITM func(host string) bool
 }
 
 type Option func(p *Proxy)
