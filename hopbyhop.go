@@ -20,7 +20,7 @@ var hopByHopHeaders = []string{
 	"Upgrade",
 }
 
-// removeHopByHopHeaders removes hop-by-hop headers
+// removeHopByHopHeaders removes hop-by-hop headers.
 func removeHopByHopHeaders(header http.Header) {
 	// Additional hop-by-hop headers may be specified in `Connection` headers.
 	// http://tools.ietf.org/html/draft-ietf-httpbis-p1-messaging-14#section-9.1

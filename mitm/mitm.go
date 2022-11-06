@@ -1,5 +1,5 @@
 // Package mitm implements methods for working with certificates and TLS configurations
-// that are used for mitming connections.
+// that are used for MITMing connections.
 package mitm
 
 import (
@@ -20,7 +20,7 @@ import (
 
 // While generating a new certificate, in order to get a unique serial
 // number every time we increment this value.
-var currentSerialNumber int64 = time.Now().Unix()
+var currentSerialNumber = time.Now().Unix()
 
 // Config is a set of configuration values that are used to build TLS configs
 // capable of MITM.

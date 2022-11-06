@@ -10,8 +10,9 @@ var errShutdown = errors.New("proxy is shutting down")
 var errClose = errors.New("closing connection")
 
 // isCloseable checks if the error signals about connection being closed
-// or the proxy shutting down
-func isCloseable(err error) bool {
+// or the proxy shutting down.
+func isCloseable(err error) (ok bool) {
+	// TODO(ameshkov): use errors.Is.
 	if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 		return true
 	}

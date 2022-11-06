@@ -18,10 +18,11 @@ linters-settings:
   gocyclo:
     min-complexity: 20
   lll:
-    line-length: 200
+    line-length: 120
 
 linters:
   enable:
+    - revive
     - errcheck
     - govet
     - ineffassign
@@ -35,7 +36,9 @@ linters:
     - gosec
     - misspell
     - stylecheck
+    - typecheck
     - unconvert
+    - govet
   disable-all: true
   fast: true
 
