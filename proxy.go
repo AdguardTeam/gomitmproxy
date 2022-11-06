@@ -426,14 +426,59 @@ func (p *Proxy) handleTunnel(session *Session) error {
 	return errClose
 }
 
+func (p *Proxy) handleUnknownStream(session *Session) error {
+	// FIXME: dup code
+	// nolint:bodyclose
+	// body is actually closed
+	session.res = proxyutil.NewResponse(http.StatusOK, nil, session.req)
+	defer session.res.Body.Close()
+
+	session.res.ContentLength = -1
+	err := p.writeResponse(session)
+	if err != nil {
+		return err
+	}
+
+	log.Debug("id=%s: enable unknown stream processor")
+	err = p.OnUnknownStream(session, session.ctx.conn)
+	if err != nil {
+		log.Error("id=%s: unknown stream processor process failed, host:%s, err:%v", session.ID(), session.req.URL.Host, err)
+		p.raiseOnError(session, err)
+		return err
+	}
+	return errClose
+}
+
 // handleConnect processes HTTP CONNECT requests
 func (p *Proxy) handleConnect(session *Session) error {
-	if p.canMITM(session.req.URL.Host) {
+	canMITM := p.canMITM(session.req.URL.Host)
+	if !canMITM && p.OnUnknownStream != nil {
+		return p.handleUnknownStream(session)
+	}
+
+	log.Debug("id=%s: connecting to host: %s", session.ID(), session.req.URL.Host)
+
+	remoteConn, err := p.connect(session, "tcp", session.RemoteAddr())
+	if remoteConn != nil {
+		defer remoteConn.Close()
+	}
+	if err != nil {
+		log.Error("id=%s: failed to connect to %s: %v", session.ID(), session.req.URL.Host, err)
+		p.raiseOnError(session, err)
+		// nolint:bodyclose
+		// body is actually closed
+		session.res = proxyutil.NewErrorResponse(session.req, err)
+		_ = p.writeResponse(session)
+		session.res.Body.Close()
+		return err
+	}
+
+	if canMITM {
 		log.Debug("id=%s: attempting MITM for connection", session.ID())
 		// nolint:bodyclose
 		// body is actually closed
 		session.res = proxyutil.NewResponse(http.StatusOK, nil, session.req)
-		err := p.writeResponse(session)
+		err = p.writeResponse(session)
 		session.res.Body.Close()
 		if err != nil {
 			return err
@@ -486,36 +531,8 @@ func (p *Proxy) handleConnect(session *Session) error {
 	defer session.res.Body.Close()
 
 	session.res.ContentLength = -1
-	err := p.writeResponse(session)
+	err = p.writeResponse(session)
 	if err != nil {
-		return err
-	}
-
-	// use the OnUnknownStream func first if it exists
-	if p.OnUnknownStream != nil {
-		log.Debug("id=%s: enable unknown stream processor")
-		err := p.OnUnknownStream(session, session.ctx.conn)
-		if err != nil {
-			log.Error("id=%s: unknown stream processor process failed, host:%s, err:%v", session.ID(), session.req.URL.Host, err)
-			p.raiseOnError(session, err)
-			return err
-		}
-		return errClose
-	}
-
-	log.Debug("id=%s: connecting to host: %s", session.ID(), session.req.URL.Host)
-	remoteConn, err := p.connect(session, "tcp", session.RemoteAddr())
-	if remoteConn != nil {
-		defer remoteConn.Close()
-	}
-	if err != nil {
-		log.Error("id=%s: failed to connect to %s: %v", session.ID(), session.req.URL.Host, err)
-		p.raiseOnError(session, err)
-		// nolint:bodyclose
-		// body is actually closed
-		session.res = proxyutil.NewErrorResponse(session.req, err)
-		_ = p.writeResponse(session)
-		session.res.Body.Close()
 		return err
 	}
 
