@@ -169,7 +169,7 @@ func onConnect(_ *gomitmproxy.Session, _ string, addr string) (conn net.Conn) {
 	host, _, err := net.SplitHostPort(addr)
 
 	if err == nil && host == "testgomitmproxy" {
-		// Don't let it connecting there -- we'll serve it by ourselves
+		// Don't let it connecting there, we'll serve it by ourselves.
 		return &proxyutil.NoopConn{}
 	}
 

@@ -70,7 +70,7 @@ func (c *Context) ID() (id string) {
 
 // IsMITM returns true if this context is for a MITMed connection.
 func (c *Context) IsMITM() (ok bool) {
-	if _, ok := c.conn.(*tls.Conn); c.parent != nil && ok {
+	if _, ok = c.conn.(*tls.Conn); c.parent != nil && ok {
 		return true
 	}
 

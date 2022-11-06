@@ -450,6 +450,7 @@ func (p *Proxy) handleTunnel(session *Session) (err error) {
 func (p *Proxy) handleConnect(session *Session) (err error) {
 	log.Debug("id=%s: connecting to host: %s", session.ID(), session.req.URL.Host)
 
+	// TODO(ameshkov): find a way to use remoteConn when the request is MITMed.
 	remoteConn, err := p.connect(session, "tcp", session.RemoteAddr())
 	if remoteConn != nil {
 		defer remoteConn.Close()
@@ -520,6 +521,7 @@ func (p *Proxy) handleConnect(session *Session) (err error) {
 		newLocalRW := bufio.NewReadWriter(bufio.NewReader(pc), bufio.NewWriter(pc))
 		newCtx := newContext(pc, newLocalRW, session)
 		p.handleLoop(newCtx)
+
 		return errClose
 	}
 

@@ -167,7 +167,7 @@ that will be used as a certificates authority. Use the following `openssl` comma
 
 ```bash
 openssl genrsa -out demo.key 2048
-openssl req -new -x509 -key demo.key -out demo.crt
+openssl req -new -x509 -key demo.key -out demo.crt -days 3650 -addext subjectAltName=DNS:<hostname>,IP:<ip>
 ```
 
 Now you can use it to initialize `MITMConfig`:

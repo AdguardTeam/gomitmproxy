@@ -210,7 +210,7 @@ func (c *Config) NewTLSConfigForHost(hostname string) *tls.Config {
 }
 
 // GetOrCreateCert gets or creates a certificate for the specified hostname
-func (c *Config) GetOrCreateCert(hostname string) (*tls.Certificate, error) {
+func (c *Config) GetOrCreateCert(hostname string) (cert *tls.Certificate, err error) {
 	// Remove the port if it exists.
 	host, _, err := net.SplitHostPort(hostname)
 	if err == nil {
@@ -218,7 +218,7 @@ func (c *Config) GetOrCreateCert(hostname string) (*tls.Certificate, error) {
 	}
 
 	c.certsStorageMu.RLock()
-	tlsCertificate, ok := c.certsStorage.Get(hostname)
+	cert, ok := c.certsStorage.Get(hostname)
 	c.certsStorageMu.RUnlock()
 
 	if ok {
@@ -226,11 +226,11 @@ func (c *Config) GetOrCreateCert(hostname string) (*tls.Certificate, error) {
 
 		// Check validity of the certificate for hostname match, expiry, etc. In
 		// particular, if the cached certificate has expired, create a new one.
-		if _, err := tlsCertificate.Leaf.Verify(x509.VerifyOptions{
+		if _, err = cert.Leaf.Verify(x509.VerifyOptions{
 			DNSName: hostname,
 			Roots:   c.roots,
 		}); err == nil {
-			return tlsCertificate, nil
+			return cert, nil
 		}
 
 		log.Debug("mitm: invalid certificate in the cache for %s", hostname)
@@ -272,14 +272,14 @@ func (c *Config) GetOrCreateCert(hostname string) (*tls.Certificate, error) {
 		return nil, err
 	}
 
-	tlsCertificate = &tls.Certificate{
+	cert = &tls.Certificate{
 		Certificate: [][]byte{raw, c.ca.Raw},
 		PrivateKey:  c.privateKey,
 		Leaf:        x509c,
 	}
 
 	c.certsStorageMu.Lock()
-	c.certsStorage.Set(hostname, tlsCertificate)
+	c.certsStorage.Set(hostname, cert)
 	c.certsStorageMu.Unlock()
-	return tlsCertificate, nil
+	return cert, nil
 }
