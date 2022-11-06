@@ -26,6 +26,6 @@ func main() {
 	signal.Notify(signalChannel, syscall.SIGINT, syscall.SIGTERM)
 	<-signalChannel
 
-	// Clean up
+	// Clean up.
 	proxy.Close()
 }

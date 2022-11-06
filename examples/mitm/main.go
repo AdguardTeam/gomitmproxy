@@ -5,7 +5,7 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -29,7 +29,7 @@ func main() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
 
-	// READ CERT AND KEY
+	// Read the MITM cert and key.
 	tlsCert, err := tls.LoadX509KeyPair("demo.crt", "demo.key")
 	if err != nil {
 		log.Fatal(err)
@@ -44,14 +44,17 @@ func main() {
 	mitmConfig, err := mitm.NewConfig(x509c, privateKey, &CustomCertsStorage{
 		certsCache: map[string]*tls.Certificate{}},
 	)
+
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	mitmConfig.SetValidity(time.Hour * 24 * 7) // generate certs valid for 7 days
-	mitmConfig.SetOrganization("gomitmproxy")  // cert organization
+	// Generate certs valid for 7 days.
+	mitmConfig.SetValidity(time.Hour * 24 * 7)
+	// Set certs organization.
+	mitmConfig.SetOrganization("gomitmproxy")
 
-	// GENERATE A CERT FOR HTTP OVER TLS PROXY
+	// Generate a cert-key pair for the HTTP-over-TLS proxy.
 	proxyCert, err := mitmConfig.GetOrCreateCert("127.0.0.1")
 	if err != nil {
 		panic(err)
@@ -60,7 +63,7 @@ func main() {
 		Certificates: []tls.Certificate{*proxyCert},
 	}
 
-	// PREPARE PROXY
+	// Prepare the proxy.
 	addr := &net.TCPAddr{
 		IP:   net.IPv4(0, 0, 0, 0),
 		Port: 3333,
@@ -91,7 +94,7 @@ func main() {
 	signal.Notify(signalChannel, syscall.SIGINT, syscall.SIGTERM)
 	<-signalChannel
 
-	// CLOSE THE PROXY
+	// Stop the proxy.
 	proxy.Close()
 }
 
@@ -135,33 +138,34 @@ func onResponse(session *gomitmproxy.Session) *http.Response {
 	}
 
 	b, err := proxyutil.ReadDecompressedBody(res)
-	// Close the original body
+	// Close the original body.
 	_ = res.Body.Close()
 	if err != nil {
 		return proxyutil.NewErrorResponse(req, err)
 	}
 
-	// Use latin1 before modifying the body
-	// Using this 1-byte encoding will let us preserve all original characters
-	// regardless of what exactly is the encoding
+	// Use latin1 before modifying the body. Using this 1-byte encoding will
+	// let us preserve all original characters regardless of what exactly is
+	// the encoding.
 	body, err := proxyutil.DecodeLatin1(bytes.NewReader(b))
 	if err != nil {
 		return proxyutil.NewErrorResponse(session.Request(), err)
 	}
 
-	// Modifying the original body
+	// Modifying the original body.
 	modifiedBody, err := proxyutil.EncodeLatin1(body + "<!-- EDITED -->")
 	if err != nil {
 		return proxyutil.NewErrorResponse(session.Request(), err)
 	}
 
-	res.Body = ioutil.NopCloser(bytes.NewReader(modifiedBody))
+	res.Body = io.NopCloser(bytes.NewReader(modifiedBody))
 	res.Header.Del("Content-Encoding")
 	res.ContentLength = int64(len(modifiedBody))
+
 	return res
 }
 
-func onConnect(session *gomitmproxy.Session, proto string, addr string) net.Conn {
+func onConnect(_ *gomitmproxy.Session, _ string, addr string) (conn net.Conn) {
 	host, _, err := net.SplitHostPort(addr)
 
 	if err == nil && host == "testgomitmproxy" {
@@ -172,18 +176,20 @@ func onConnect(session *gomitmproxy.Session, proto string, addr string) net.Conn
 	return nil
 }
 
-// CustomCertsStorage - an example of a custom cert storage
+// CustomCertsStorage is an example of a custom cert storage.
 type CustomCertsStorage struct {
-	certsCache map[string]*tls.Certificate // cache with the generated certificates
+	// certsCache is a cache with the generated certificates.
+	certsCache map[string]*tls.Certificate
 }
 
-// Get gets the certificate from the storage
-func (c *CustomCertsStorage) Get(key string) (*tls.Certificate, bool) {
-	v, ok := c.certsCache[key]
-	return v, ok
+// Get gets the certificate from the storage.
+func (c *CustomCertsStorage) Get(key string) (cert *tls.Certificate, ok bool) {
+	cert, ok = c.certsCache[key]
+
+	return cert, ok
 }
 
-// Set saves the certificate to the storage
+// Set saves the certificate to the storage.
 func (c *CustomCertsStorage) Set(key string, cert *tls.Certificate) {
 	c.certsCache[key] = cert
 }
