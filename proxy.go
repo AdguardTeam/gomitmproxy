@@ -20,7 +20,11 @@ import (
 
 var errClientCertRequested = errors.New("tls: client cert authentication unsupported")
 
-const defaultTimeout = 5 * time.Minute
+// defaultTimeout is the default value for reading from local connections.
+// By default we have no timeout.
+//
+// TODO(ameshkov): rework deadlines (see #13 for example).
+const defaultTimeout = 0
 const dialTimeout = 30 * time.Second
 const tlsHandshakeTimeout = 10 * time.Second
 
@@ -64,8 +68,8 @@ func NewProxy(config Config) *Proxy {
 	proxy := &Proxy{
 		Config: config,
 		transport: &http.Transport{
-			// This forces http.Transport to not upgrade requests to HTTP/2
-			// TODO: Remove when HTTP/2 can be supported
+			// This forces http.Transport to not upgrade requests to HTTP/2.
+			// TODO: Remove when HTTP/2 can be supported.
 			TLSNextProto:          make(map[string]func(string, *tls.Conn) http.RoundTripper),
 			Proxy:                 http.ProxyFromEnvironment,
 			TLSHandshakeTimeout:   tlsHandshakeTimeout,
@@ -205,8 +209,11 @@ func (p *Proxy) handleConnection(ctx *Context) {
 // handleLoop processes requests in a loop.
 func (p *Proxy) handleLoop(ctx *Context) {
 	for {
-		deadline := time.Now().Add(p.timeout)
-		_ = ctx.SetDeadline(deadline)
+		if p.timeout > 0 {
+			// TODO(ameshkov): rework deadlines (see #13 for example).
+			deadline := time.Now().Add(p.timeout)
+			_ = ctx.SetDeadline(deadline)
+		}
 
 		if err := p.handleRequest(ctx); err != nil {
 			log.Debug("id=%s: closing connection due to: %v", ctx.ID(), err)
