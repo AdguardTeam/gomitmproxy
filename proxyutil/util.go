@@ -7,7 +7,6 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"time"
@@ -26,7 +25,7 @@ func NewResponse(code int, body io.Reader, req *http.Request) *http.Response {
 
 	rc, ok := body.(io.ReadCloser)
 	if !ok {
-		rc = ioutil.NopCloser(body)
+		rc = io.NopCloser(body)
 	}
 
 	res := &http.Response{
@@ -78,7 +77,7 @@ func ReadDecompressedBody(res *http.Response) ([]byte, error) {
 		rBody = gzReader
 		defer gzReader.Close()
 	}
-	return ioutil.ReadAll(rBody)
+	return io.ReadAll(rBody)
 }
 
 // DecodeLatin1 - decodes Latin1 string from the reader
@@ -86,7 +85,7 @@ func ReadDecompressedBody(res *http.Response) ([]byte, error) {
 // to handle different encodings
 func DecodeLatin1(reader io.Reader) (string, error) {
 	r := transform.NewReader(reader, charmap.ISO8859_1.NewDecoder())
-	b, err := ioutil.ReadAll(r)
+	b, err := io.ReadAll(r)
 	if err != nil {
 		return "", err
 	}
@@ -109,13 +108,13 @@ func (NoopConn) LocalAddr() net.Addr { return &net.TCPAddr{} }
 func (NoopConn) RemoteAddr() net.Addr { return &net.TCPAddr{} }
 
 // SetDeadline - does nothing, returns nil
-func (NoopConn) SetDeadline(t time.Time) error { return nil }
+func (NoopConn) SetDeadline(time.Time) error { return nil }
 
 // SetReadDeadline - does nothing, returns nil
-func (NoopConn) SetReadDeadline(t time.Time) error { return nil }
+func (NoopConn) SetReadDeadline(time.Time) error { return nil }
 
 // SetWriteDeadline - does nothing, returns nil
-func (NoopConn) SetWriteDeadline(t time.Time) error { return nil }
+func (NoopConn) SetWriteDeadline(time.Time) error { return nil }
 
 // Read -- does nothing, returns io.EOF
 func (NoopConn) Read(b []byte) (int, error) { return 0, io.EOF }

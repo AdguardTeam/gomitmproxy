@@ -14,11 +14,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/AdguardTeam/gomitmproxy/proxyutil"
-
 	"github.com/AdguardTeam/golibs/log"
 	"github.com/AdguardTeam/gomitmproxy"
 	"github.com/AdguardTeam/gomitmproxy/mitm"
+	"github.com/AdguardTeam/gomitmproxy/proxyutil"
 
 	_ "net/http/pprof"
 )

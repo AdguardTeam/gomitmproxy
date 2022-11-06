@@ -64,3 +64,7 @@ issues:
     - G402
     # gosec: Use of weak random number generator
     - G404
+    # gosec: Use of weak cryptographic primitive
+    - G401
+    # gosec: Blocklisted import crypto/sha1: weak cryptographic primitive
+    - G505
