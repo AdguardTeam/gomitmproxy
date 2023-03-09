@@ -88,7 +88,10 @@ proxy := gomitmproxy.NewProxy(gomitmproxy.Config{
         log.Printf("onResponse: %s", session.Request().URL.String())
 
         if _, ok := session.GetProp("blocked"); ok {
-            log.Printf("onResponse: was blocked")
+            blocked, _ := session.GetProp("blocked")
+            if blocked.(bool) {
+                log.Printf("onResponse: was blocked")
+            }
         }
 
         res := session.Response()
