@@ -68,6 +68,11 @@ func (c *Context) ID() (id string) {
 	return fmt.Sprintf("%d", c.id)
 }
 
+// Parent return parent session of this context
+func (c *Context) Parent() *Session {
+	return c.parent
+}
+
 // IsMITM returns true if this context is for a MITMed connection.
 func (c *Context) IsMITM() (ok bool) {
 	if _, ok = c.conn.(*tls.Conn); c.parent != nil && ok {
