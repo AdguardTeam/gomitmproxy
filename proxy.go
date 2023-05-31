@@ -263,7 +263,7 @@ func (p *Proxy) handleRequest(ctx *Context) error {
 				session.res = res
 				defer res.Body.Close()
 				_ = p.writeResponse(session)
-				return errClose
+				return nil
 			}
 		}
 
@@ -356,6 +356,11 @@ func (p *Proxy) handleAPIRequest(session *Session) (err error) {
 // isClosing returns true if this session's response or request signals that
 // the connection must be closed.
 func (p *Proxy) isClosing(session *Session) (ok bool) {
+	// we should not close auth connection
+	if session.res.StatusCode == http.StatusProxyAuthRequired {
+		return false
+	}
+
 	// See http.Response.Write implementation for the details on this.
 	//
 	// If we're sending a non-chunked HTTP/1.1 response without a
