@@ -219,13 +219,14 @@ func (p *Proxy) handleLoop(ctx *Context) {
 
 		if err := p.handleRequest(ctx); err != nil {
 			log.Debug("id=%s: closing connection due to: %v", ctx.ID(), err)
+
 			return
 		}
 	}
 }
 
 // handleRequest reads an incoming request and processes it.
-func (p *Proxy) handleRequest(ctx *Context) error {
+func (p *Proxy) handleRequest(ctx *Context) (err error) {
 	origReq, err := p.readRequest(ctx)
 
 	defer log.OnCloserError(origReq.Body, log.DEBUG)
@@ -268,7 +269,11 @@ func (p *Proxy) handleRequest(ctx *Context) error {
 
 				_ = p.writeResponse(session)
 
-				return errClose
+				// Do not return any error here as we must keep the connection
+				// alive. When the client receives 407 error, it can write
+				// another request with user credentials to the same connection.
+				// See https://github.com/AdguardTeam/gomitmproxy/pull/19.
+				return nil
 			}
 		}
 

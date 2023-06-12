@@ -26,6 +26,7 @@ func newNotAuthorizedResponse(session *Session) *http.Response {
 
 	// See https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Proxy-Authenticate.
 	res.Header.Set("Proxy-Authenticate", "Basic")
+
 	return res
 }
 
