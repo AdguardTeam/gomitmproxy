@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/AdguardTeam/golibs/log"
 	"golang.org/x/text/encoding/charmap"
 	"golang.org/x/text/transform"
 )
@@ -76,8 +77,10 @@ func ReadDecompressedBody(res *http.Response) (b []byte, err error) {
 		if err != nil {
 			return nil, err
 		}
+
 		rBody = gzReader
-		defer gzReader.Close()
+
+		defer log.OnCloserError(gzReader, log.DEBUG)
 	}
 
 	return io.ReadAll(rBody)
@@ -120,7 +123,7 @@ func (NoopConn) SetReadDeadline(time.Time) error { return nil }
 func (NoopConn) SetWriteDeadline(time.Time) error { return nil }
 
 // Read does nothing, returns io.EOF.
-func (NoopConn) Read(b []byte) (int, error) { return 0, io.EOF }
+func (NoopConn) Read([]byte) (int, error) { return 0, io.EOF }
 
 // Write does nothing, returns len(b).
 func (NoopConn) Write(b []byte) (int, error) { return len(b), nil }

@@ -155,7 +155,8 @@ func (p *Proxy) Serve(l net.Listener) {
 func (p *Proxy) Close() {
 	log.Printf("Closing proxy")
 
-	p.listener.Close()
+	log.OnCloserError(p.listener, log.DEBUG)
+
 	// This will prevent waiting for the proxy.timeout until an incoming
 	// request has been read.
 	close(p.closing)
@@ -198,7 +199,8 @@ func (p *Proxy) handleConnection(ctx *Context) {
 
 	// Clean up on exit.
 	defer p.connsWg.Done()
-	defer ctx.conn.Close()
+	defer log.OnCloserError(ctx.conn, log.DEBUG)
+
 	if p.Closing() {
 		return
 	}
@@ -225,10 +227,12 @@ func (p *Proxy) handleLoop(ctx *Context) {
 // handleRequest reads an incoming request and processes it.
 func (p *Proxy) handleRequest(ctx *Context) error {
 	origReq, err := p.readRequest(ctx)
+
+	defer log.OnCloserError(origReq.Body, log.DEBUG)
+
 	if err != nil {
 		return err
 	}
-	defer origReq.Body.Close()
 
 	session := newSession(ctx, origReq)
 	p.prepareRequest(origReq, session)
@@ -236,8 +240,6 @@ func (p *Proxy) handleRequest(ctx *Context) error {
 
 	customRes := false
 	if p.OnRequest != nil {
-		// newRes body is closed below (see session.res.body.Close())
-		// nolint:bodyclose
 		newReq, newRes := p.OnRequest(session)
 		if newReq != nil {
 			log.Debug("id=%s: request was overridden by: %s", session.ID(), newReq.URL.String())
@@ -261,8 +263,11 @@ func (p *Proxy) handleRequest(ctx *Context) error {
 			if !auth {
 				log.Debug("id=%s: proxy auth required", session.ID())
 				session.res = res
-				defer res.Body.Close()
+
+				defer log.OnCloserError(res.Body, log.DEBUG)
+
 				_ = p.writeResponse(session)
+
 				return errClose
 			}
 		}
@@ -280,14 +285,11 @@ func (p *Proxy) handleRequest(ctx *Context) error {
 		}
 
 		// not a CONNECT request, processing a plain HTTP request.
-		// res body is closed below (see session.res.body.Close()).
-		// nolint:bodyclose
 		res, err := p.transport.RoundTrip(session.req)
 		if err != nil {
 			log.Error("id=%s: failed to round trip: %v", session.ID(), err)
 			p.raiseOnError(session, err)
-			// res body is closed below (see session.res.body.Close()).
-			// nolint:bodyclose
+
 			res = proxyutil.NewErrorResponse(session.req, err)
 
 			if strings.Contains(err.Error(), "x509: ") ||
@@ -305,7 +307,7 @@ func (p *Proxy) handleRequest(ctx *Context) error {
 	}
 
 	// Make sure the response body is always closed.
-	defer session.res.Body.Close()
+	defer log.OnCloserError(session.res.Body, log.DEBUG)
 
 	err = p.writeResponse(session)
 	if err != nil {
@@ -334,20 +336,19 @@ func (p *Proxy) handleAPIRequest(session *Session) (err error) {
 			Bytes: p.MITMConfig.GetCA().Raw,
 		})
 
-		// nolint:bodyclose
-		// body is actually closed.
 		session.res = proxyutil.NewResponse(http.StatusOK, bytes.NewReader(b), session.req)
-		defer session.res.Body.Close()
+		defer log.OnCloserError(session.res.Body, log.DEBUG)
+
 		session.res.Close = true
 		session.res.Header.Set("Content-Type", "application/x-x509-ca-cert")
 		session.res.ContentLength = int64(len(b))
+
 		return p.writeResponse(session)
 	}
 
-	// nolint:bodyclose
-	// body is actually closed.
 	session.res = proxyutil.NewErrorResponse(session.req, errors.Errorf("wrong API method"))
-	defer session.res.Body.Close()
+	defer log.OnCloserError(session.res.Body, log.DEBUG)
+
 	session.res.Close = true
 
 	return p.writeResponse(session)
@@ -388,16 +389,15 @@ func (p *Proxy) handleTunnel(session *Session) (err error) {
 	if err != nil {
 		log.Error("id=%s: failed to connect to %s: %v", session.ID(), session.req.URL.Host, err)
 		p.raiseOnError(session, err)
-		// nolint:bodyclose
-		// body is actually closed.
 		session.res = proxyutil.NewErrorResponse(session.req, err)
 		_ = p.writeResponse(session)
-		session.res.Body.Close()
+		log.OnCloserError(session.res.Body, log.DEBUG)
+
 		return err
 	}
 
 	remoteConn := conn
-	defer remoteConn.Close()
+	defer log.OnCloserError(remoteConn, log.DEBUG)
 
 	// If we're inside a MITMed connection, we should open a TLS connection
 	// instead.
@@ -460,28 +460,27 @@ func (p *Proxy) handleConnect(session *Session) (err error) {
 	// TODO(ameshkov): find a way to use remoteConn when the request is MITMed.
 	remoteConn, err := p.connect(session, "tcp", session.RemoteAddr())
 	if remoteConn != nil {
-		defer remoteConn.Close()
+		defer log.OnCloserError(remoteConn, log.DEBUG)
 	}
 
 	if err != nil {
 		log.Error("id=%s: failed to connect to %s: %v", session.ID(), session.req.URL.Host, err)
 		p.raiseOnError(session, err)
-		// nolint:bodyclose
-		// body is actually closed
+
 		session.res = proxyutil.NewErrorResponse(session.req, err)
 		_ = p.writeResponse(session)
-		session.res.Body.Close()
+		defer log.OnCloserError(session.res.Body, log.DEBUG)
 
 		return err
 	}
 
 	if p.canMITM(session.req.URL.Host) {
 		log.Debug("id=%s: attempting MITM for connection", session.ID())
-		// nolint:bodyclose
-		// body is actually closed.
 		session.res = proxyutil.NewResponse(http.StatusOK, nil, session.req)
 		err = p.writeResponse(session)
-		session.res.Body.Close()
+
+		log.OnCloserError(session.res.Body, log.DEBUG)
+
 		if err != nil {
 			return err
 		}
@@ -532,10 +531,8 @@ func (p *Proxy) handleConnect(session *Session) (err error) {
 		return errClose
 	}
 
-	// nolint:bodyclose
-	// body is actually closed.
 	session.res = proxyutil.NewResponse(http.StatusOK, nil, session.req)
-	defer session.res.Body.Close()
+	defer log.OnCloserError(session.res.Body, log.DEBUG)
 
 	session.res.ContentLength = -1
 	err = p.writeResponse(session)
@@ -614,7 +611,7 @@ func (p *Proxy) writeResponse(session *Session) (err error) {
 		res := p.OnResponse(session)
 		if res != nil {
 			origBody := res.Body
-			defer origBody.Close()
+			defer log.OnCloserError(origBody, log.DEBUG)
 			log.Debug("id=%s: response was overridden by: %s", session.ID(), res.Status)
 			session.res = res
 		}

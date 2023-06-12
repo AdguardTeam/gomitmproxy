@@ -31,7 +31,7 @@ jobs:
         with:
           # This field is required.  Dont set the patch version to always use
           # the latest patch version.
-          version: v1.50.0
+          version: v1.52.2
   notify:
     needs:
       - golangci

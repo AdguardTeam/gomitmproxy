@@ -281,5 +281,6 @@ func (c *Config) GetOrCreateCert(hostname string) (cert *tls.Certificate, err er
 	c.certsStorageMu.Lock()
 	c.certsStorage.Set(hostname, cert)
 	c.certsStorageMu.Unlock()
+
 	return cert, nil
 }
