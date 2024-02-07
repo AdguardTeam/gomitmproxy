@@ -228,12 +228,11 @@ func (p *Proxy) handleLoop(ctx *Context) {
 // handleRequest reads an incoming request and processes it.
 func (p *Proxy) handleRequest(ctx *Context) (err error) {
 	origReq, err := p.readRequest(ctx)
-
-	defer log.OnCloserError(origReq.Body, log.DEBUG)
-
 	if err != nil {
 		return err
 	}
+
+	defer log.OnCloserError(origReq.Body, log.DEBUG)
 
 	session := newSession(ctx, origReq)
 	p.prepareRequest(origReq, session)
