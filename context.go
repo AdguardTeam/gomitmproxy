@@ -102,6 +102,14 @@ func (c *Context) SetProp(key string, val interface{}) {
 	c.props[key] = val
 }
 
+// HasParent check if parent is not nil.
+func (c *Context) HasParent() bool {
+	if c.parent != nil {
+		return true
+	}
+	return false
+}
+
 // Session contains all the necessary information about the request-response
 // pair that is currently being processed.
 type Session struct {

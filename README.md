@@ -144,6 +144,36 @@ proxy := gomitmproxy.NewProxy(gomitmproxy.Config{
 })
 ```
 
+Or implement using `OnAuthorize` handler.
+
+```go
+proxy := gomitmproxy.NewProxy(gomitmproxy.Config{
+    ListenAddr: &net.TCPAddr{
+        IP:   net.IPv4(0, 0, 0, 0),
+        Port: 8080,
+    },
+    OnAuthorize: func(session *gomitmproxy.Session) (bool, *http.Response) {
+		if session.Ctx().HasParent() {
+			// If we're here, it means the connection is authorized already.
+			return true, nil
+		}
+		
+		username, password, ok := session.Request().BasicAuth()
+		if !ok {
+			return nil, proxyutil.NewResponse(http.StatusProxyAuthRequired, nil, req)
+		}
+		// call an external library
+		resultAuth, err := authClient.AuthenticateUser(username, password)
+		if err != nil {
+			return nil, proxyutil.NewResponse(http.StatusProxyAuthRequired, nil, req)
+		}
+		session.SetProp("resultAuth", resultAuth)
+
+		return true, nil
+    },
+})
+```
+
 ### HTTP over TLS (HTTPS) proxy
 
 If you want to protect yourself from eavesdropping on your traffic to proxy, you can configure

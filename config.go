@@ -20,6 +20,9 @@ type OnResponseFunc func(session *Session) (resp *http.Response)
 // OnErrorFunc is a declaration of the Config.OnError handler.
 type OnErrorFunc func(session *Session, err error)
 
+// OnAuthorizeFunc is a declaration of the Config.OnAuthorize handler.
+type OnAuthorizeFunc func(session *Session) (bool, *http.Response)
+
 // Config is the configuration of the Proxy.
 type Config struct {
 	// ListenAddr is the TCP address the proxy should listen to.
@@ -83,4 +86,7 @@ type Config struct {
 	// OnError is called if there's an issue with retrieving the response from
 	// the remote server.
 	OnError OnErrorFunc
+
+	// OnAuthorize is called for authorize request.
+	OnAuthorize OnAuthorizeFunc
 }
