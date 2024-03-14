@@ -102,6 +102,21 @@ func NewProxy(config Config) *Proxy {
 	return proxy
 }
 
+// SetTimeout set Timeout of the proxy.
+func (p *Proxy) SetTimeout(timeout time.Duration) {
+	p.timeout = timeout
+}
+
+// SetTransport set RoundTripper of the proxy.
+func (p *Proxy) SetTransport(transport *http.Transport) {
+	p.transport = transport
+}
+
+// SetDial set Dialer of the proxy.
+func (p *Proxy) SetDial(dial *net.Dialer) {
+	p.dial = (dial).Dial
+}
+
 // Addr returns the address this proxy listens to.
 func (p *Proxy) Addr() (addr net.Addr) {
 	return p.addr
