@@ -160,12 +160,12 @@ proxy := gomitmproxy.NewProxy(gomitmproxy.Config{
 		
 		username, password, ok := session.Request().BasicAuth()
 		if !ok {
-			return nil, proxyutil.NewResponse(http.StatusProxyAuthRequired, nil, req)
+			return false, proxyutil.NewResponse(http.StatusProxyAuthRequired, nil, req)
 		}
 		// call an external library
 		resultAuth, err := authClient.AuthenticateUser(username, password)
 		if err != nil {
-			return nil, proxyutil.NewResponse(http.StatusProxyAuthRequired, nil, req)
+			return false, proxyutil.NewResponse(http.StatusProxyAuthRequired, nil, req)
 		}
 		session.SetProp("resultAuth", resultAuth)
 
