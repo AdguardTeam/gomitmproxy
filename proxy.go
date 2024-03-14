@@ -18,7 +18,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-var errClientCertRequested = errors.New("tls: client cert authentication unsupported")
+var ErrClientCertRequested = errors.New("tls: client cert authentication unsupported")
 
 // defaultTimeout is the default value for reading from local connections.
 // By default we have no timeout.
@@ -80,7 +80,7 @@ func NewProxy(config Config) *Proxy {
 					// http.Transport.RoundTrip method failed. In this case
 					// we'll receive the error and will be able to add the host
 					// to invalidTLSHosts.
-					return nil, errClientCertRequested
+					return nil, ErrClientCertRequested
 				},
 			},
 		},
@@ -312,7 +312,7 @@ func (p *Proxy) handleRequest(ctx *Context) (err error) {
 			res = proxyutil.NewErrorResponse(session.req, err)
 
 			if strings.Contains(err.Error(), "x509: ") ||
-				strings.Contains(err.Error(), errClientCertRequested.Error()) {
+				strings.Contains(err.Error(), ErrClientCertRequested.Error()) {
 				log.Printf("id=%s: adding %s to invalid TLS hosts due to: %v", session.ID(), session.req.Host, err)
 				p.invalidTLSHostsMu.Lock()
 				p.invalidTLSHosts[session.req.Host] = true
@@ -428,7 +428,7 @@ func (p *Proxy) handleTunnel(session *Session) (err error) {
 			// http.Transport.RoundTrip method failed. In this case we'll
 			// receive the error and will be able to add the host to
 			// invalidTLSHosts.
-			return nil, errClientCertRequested
+			return nil, ErrClientCertRequested
 		}
 
 		tlsConn := tls.Client(conn, &tls.Config{
