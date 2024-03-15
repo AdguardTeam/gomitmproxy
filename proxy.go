@@ -258,7 +258,23 @@ func (p *Proxy) handleRequest(ctx *Context) (err error) {
 
 	if !customRes {
 		// check proxy authorization first.
-		if p.Username != "" {
+		if p.OnAuthorize != nil {
+			auth, res := p.OnAuthorize(session)
+			if !auth {
+				log.Debug("id=%s: proxy auth required", session.ID())
+				session.res = res
+
+				defer log.OnCloserError(res.Body, log.DEBUG)
+
+				_ = p.writeResponse(session)
+
+				// Do not return any error here as we must keep the connection
+				// alive. When the client receives 407 error, it can write
+				// another request with user credentials to the same connection.
+				// See https://github.com/AdguardTeam/gomitmproxy/pull/19.
+				return nil
+			}
+		} else if p.Username != "" {
 			auth, res := p.authorize(session)
 			if !auth {
 				log.Debug("id=%s: proxy auth required", session.ID())

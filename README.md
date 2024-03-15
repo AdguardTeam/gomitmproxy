@@ -162,12 +162,6 @@ proxy := gomitmproxy.NewProxy(gomitmproxy.Config{
 		if !ok {
 			return false, gomitmproxy.NewNotAuthorizedResponse(session)
 		}
-		// call an external library
-		resultAuth, err := authClient.AuthenticateUser(username, password)
-		if err != nil {
-			return false, gomitmproxy.NewNotAuthorizedResponse(session)
-		}
-		session.SetProp("resultAuth", resultAuth)
 
 		return true, nil
     },
