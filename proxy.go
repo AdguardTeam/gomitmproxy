@@ -102,7 +102,7 @@ func NewProxy(config Config) *Proxy {
 	return proxy
 }
 
-// SetTimeout set Timeout of the proxy (context Deadline).
+// SetTimeout set Timeout of the proxy (Deadline for processing the request).
 func (p *Proxy) SetTimeout(timeout time.Duration) {
 	p.timeout = timeout
 }
