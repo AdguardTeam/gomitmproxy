@@ -102,7 +102,7 @@ func NewProxy(config Config) *Proxy {
 	return proxy
 }
 
-// SetTimeout set Timeout of the proxy.
+// SetTimeout set Timeout of the proxy (context Deadline).
 func (p *Proxy) SetTimeout(timeout time.Duration) {
 	p.timeout = timeout
 }
@@ -312,7 +312,7 @@ func (p *Proxy) handleRequest(ctx *Context) (err error) {
 			res = proxyutil.NewErrorResponse(session.req, err)
 
 			if strings.Contains(err.Error(), "x509: ") ||
-				strings.Contains(err.Error(), ErrClientCertRequested.Error()) {
+				errors.Is(err, ErrClientCertRequested) {
 				log.Printf("id=%s: adding %s to invalid TLS hosts due to: %v", session.ID(), session.req.Host, err)
 				p.invalidTLSHostsMu.Lock()
 				p.invalidTLSHosts[session.req.Host] = true
