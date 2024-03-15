@@ -28,6 +28,8 @@ const defaultTimeout = 0
 const dialTimeout = 30 * time.Second
 const tlsHandshakeTimeout = 10 * time.Second
 
+type DialFunc func(string, string) (net.Conn, error)
+
 // Proxy is a structure with the proxy server configuration and current state.
 type Proxy struct {
 	// addr is the address the proxy listens to.
@@ -42,7 +44,7 @@ type Proxy struct {
 
 	// dial is a function for creating net.Conn. Can be useful to override in
 	// unit-tests.
-	dial func(string, string) (net.Conn, error)
+	dial DialFunc
 
 	// timeout is the remote connection's read/write timeout.
 	timeout time.Duration
@@ -113,8 +115,8 @@ func (p *Proxy) SetTransport(transport *http.Transport) {
 }
 
 // SetDial set Dialer of the proxy.
-func (p *Proxy) SetDial(dial *net.Dialer) {
-	p.dial = (dial).Dial
+func (p *Proxy) SetDial(dial DialFunc) {
+	p.dial = dial
 }
 
 // Addr returns the address this proxy listens to.
