@@ -186,3 +186,13 @@ func (s *Session) RemoteAddr() (addr string) {
 
 	return fmt.Sprintf("%s:80", host)
 }
+
+// LocalAddr returns the local address (ip:port) of the underlying accepted connection.
+// It delegates to the topmost parent context so MITM-wrapped conns work transparently.
+func (c *Context) LocalAddr() net.Addr {
+	if c.parent == nil {
+		return c.conn.LocalAddr()
+	}
+
+	return c.parent.ctx.LocalAddr()
+}
