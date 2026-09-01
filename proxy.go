@@ -695,7 +695,7 @@ func (p *Proxy) prepareRequest(req *http.Request, session *Session) {
 	req.RemoteAddr = session.ctx.conn.RemoteAddr().String()
 
 	// Remove unsupported encodings.
-	if req.Header.Get("Accept-Encoding") != "" {
+	if req.Header.Get("Accept-Encoding") != "" && req.Header.Get("Accept-Encoding") != "identity" {
 		req.Header.Set("Accept-Encoding", "gzip")
 	}
 }
