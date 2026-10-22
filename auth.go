@@ -45,11 +45,13 @@ func (p *Proxy) authorize(session *Session) (bool, *http.Response) {
 
 	// See https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Proxy-Authorization.
 	proxyAuth := session.req.Header.Get("Proxy-Authorization")
-	if strings.Index(proxyAuth, "Basic ") != 0 {
+	const basicAuthPrefix = "Basic "
+	if len(proxyAuth) < len(basicAuthPrefix) ||
+		!strings.EqualFold(proxyAuth[:len(basicAuthPrefix)], basicAuthPrefix) {
 		return false, newNotAuthorizedResponse(session)
 	}
 
-	authHeader := proxyAuth[len("Basic "):]
+	authHeader := proxyAuth[len(basicAuthPrefix):]
 	if authHeader != basicAuth(p.Username, p.Password) {
 		return false, newNotAuthorizedResponse(session)
 	}
